@@ -1,0 +1,81 @@
+Playlisto: A Web-Based Song Guessing Game Design
+1. Game Overview
+"Playlisto" is a multiplayer song-guessing game where players join or create a lobby and compete to identify songs from a selected Spotify playlist. The game revolves around quick thinking, music knowledge, and engaging interactions. Players are awarded points based on how quickly they guess the song correctly, with the option for the host to extend the playtime of a song to make it easier.
+
+2. Game Mechanics
+Lobby Creation and Connectivity
+Players: Players can either create a new lobby or join an existing one. Upon joining, they provide their name for identification.
+Host: The lobby creator becomes the host, responsible for managing the game flow, including selecting the playlist and starting rounds.
+Playlist Selection: The host selects a playlist from their Spotify account, which will be used throughout the game. Spotify API integration allows the host to authenticate their account and browse their available playlists.
+Lobby Details:
+Players can see the list of connected players.
+Players indicate their readiness status.
+The host can wait until all players are ready before starting the game.
+The lobby can accommodate multiple players, with scalability depending on server capabilities.
+Game Start and Playlist Selection
+Once all players are marked "ready," the host initiates the game.
+The playlist is randomly shuffled, and the first song is selected.
+The host's device plays the first 0.5 seconds of the song, which is not heard by other players but instead triggered server-side to maintain fairness.
+Round Mechanics
+Song Playback: The first 0.5 seconds of a randomly selected song plays automatically.
+Guessing: Each player is presented with a search bar that integrates with the Spotify API, offering dynamic autocompletion as they begin typing. This allows players to quickly search and select songs from the Spotify database.
+Attempts: Players are limited to three guesses per round.
+Timer: Players are timed from when the song plays to when they submit their final guess. Faster correct guesses yield more points.
+Guessing Workflow:
+The song plays.
+Players use the search bar with dynamic autocompletion to search for the song title or artist.
+Players submit their guess; the game checks the response against the correct song.
+If correct, points are awarded based on response time.
+Points System
+Points per Round:
+Points are calculated using a diminishing returns model, where faster correct answers receive more points.
+Example scoring structure:
+Guess within the first 5 seconds: 100 points.
+Guess within 10 seconds: 75 points.
+Guess within 15 seconds: 50 points.
+After 15 seconds: 25 points (if correct).
+Incorrect Guesses:
+Players can make up to three incorrect guesses per round.
+No penalty for incorrect guesses, but after three attempts, the player can no longer guess in that round.
+Host Controls
+Round Control:
+The host can extend the song playtime incrementally (by 0.5, 1, or 1.5 seconds) to give players additional hints.
+The host can end the round when all players have either guessed or used up their attempts.
+Participation:
+The host is also a player and follows the same guessing rules.
+Edge Case:
+If no player guesses correctly, the round concludes without awarding points, and the correct song is revealed to all players before moving to the next round.
+3. User Interface Considerations
+Lobby Screen
+Player List: Displays a list of connected players and their readiness status.
+Playlist Selector: Host-only control to select a playlist from their Spotify account.
+Chat Section: A simple chat for players to interact while waiting.
+Start Button: Host control to begin the game once all players are ready.
+Gameplay Screen
+Song Playback: The host’s device plays the song snippet, with a visual indicator for players that the song has started.
+Search Bar: A dynamic search bar with autocompletion from Spotify’s song database.
+Guess Submission: Players submit guesses from the search bar.
+Scoreboard: Displays a real-time scoreboard showing each player’s points.
+Timer: A countdown timer that emphasizes the importance of speed in guessing correctly.
+End of Round Screen
+Correct Answer Display: Reveals the song and artist if no one guessed correctly.
+Player Scores: Updates the scoreboard and highlights any point changes.
+Next Round Prompt: Displays a prompt for the host to start the next round.
+4. Backend Integration
+Spotify API Integration
+Playlist Access: The host will authenticate via OAuth to connect their Spotify account and access their playlists.
+Dynamic Search: The game uses Spotify's search API for autocompletion, ensuring that players can search the entire Spotify database in real-time.
+Song Playback: The backend will handle song preview links and control the timing (first 0.5 seconds, extendable by host). Playback will be server-driven to prevent synchronization issues.
+Lobby and Player Management
+Multiple Lobbies: The system should support multiple lobbies running concurrently, with each lobby maintaining independent playlists and players.
+Player Authentication: While not essential, player accounts can be created or authenticated via Spotify to save scores, track progress, and rejoin lobbies.
+Scalability: The backend should be designed using WebSockets or long polling to handle real-time game interaction. Servers should support a significant number of concurrent players and lobbies by optimizing resource allocation.
+Score Calculation and Database
+Real-Time Score Updates: Points are calculated on the server based on how quickly a player guesses the song correctly, with results pushed in real-time to all players in the lobby.
+Database: A lightweight database (e.g., SQLite or PostgreSQL) can store player information, lobby data, and game history for future reference or post-game statistics.
+5. Edge Case Handling
+No Correct Guesses: If no player guesses correctly within the time limit or their three attempts, the host reveals the correct answer, and no points are awarded.
+Host Leaves the Lobby: If the host disconnects, another player could be promoted to host, or the game could be paused until the host reconnects.
+Concurrent Lobbies: The backend should efficiently handle scaling, using unique lobby IDs and isolated game instances to allow for multiple independent lobbies at once.
+6. Conclusion
+"Playlisto" leverages Python web frameworks, the Spotify API, and real-time player interaction to create a fun, competitive game for music lovers. The integration of quick guessing mechanics, dynamic song search, and lobby-based play ensures engaging gameplay for a variety of players. Scaling with multiple lobbies and edge case handling ensures that the game can accommodate diverse groups and large numbers of players.
