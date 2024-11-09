@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SpotifyAuth } from "@/components/spotify-auth";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Music2, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSocket } from '@/hooks/useSocket';
@@ -40,18 +40,30 @@ export default function LobbyPage() {
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
   const socket = useSocket(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001');
 
-  useEffect(() => {
+  // Handle joining lobby
+  const joinLobby = useCallback(() => {
     if (!socket || !playerName || !lobbyId) return;
 
-    // Join lobby
+    console.log('Joining lobby with:', { lobbyId, playerName, isHost });
     socket.emit('joinLobby', {
       lobbyId,
       playerName,
       isHost
     });
+  }, [socket, playerName, lobbyId, isHost]);
+
+  // Initial join and socket event setup
+  useEffect(() => {
+    if (!socket) return;
+
+    // Only join if we're not already connected
+    if (!socket.connected) {
+      joinLobby();
+    }
 
     // Listen for lobby updates
     socket.on('lobbyUpdate', (lobby) => {
+      console.log('Received lobby update:', lobby);
       setPlayers(lobby.players);
       if (lobby.spotifyPlaylist) {
         setSelectedPlaylist(lobby.spotifyPlaylist);
@@ -60,7 +72,6 @@ export default function LobbyPage() {
 
     // Listen for game start
     socket.on('gameStart', (playlist) => {
-      // Navigate to game page
       router.push(`/game/${lobbyId}?playlist=${playlist.id}`);
     });
 
@@ -75,12 +86,12 @@ export default function LobbyPage() {
       socket.off('gameStart');
       socket.off('error');
     };
-  }, [socket, playerName, lobbyId, isHost, router]);
+  }, [socket, lobbyId, router, joinLobby]);
 
+  // Handle Spotify authentication success
   const handleSpotifyAuth = async (token: string) => {
     try {
       setSpotifyToken(token);
-      console.log('Fetching playlists with token:', token); // Debug log
       
       const response = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
         headers: {
@@ -90,21 +101,13 @@ export default function LobbyPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Spotify API error:', response.status, errorData);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('Spotify API response:', data); // Debug log
       
-      if (!data || !Array.isArray(data.items)) {
-        console.error('Invalid response format:', data);
-        throw new Error('Invalid response format from Spotify API');
-      }
-
       const formattedPlaylists: Playlist[] = data.items
-        .filter((item: any) => item && item.tracks) // Filter out any null or invalid items
+        .filter((item: any) => item && item.tracks)
         .map((item: any) => ({
           id: item.id,
           name: item.name || 'Unnamed Playlist',
@@ -112,17 +115,10 @@ export default function LobbyPage() {
           imageUrl: item.images?.[0]?.url || null
         }));
 
-      console.log('Formatted playlists:', formattedPlaylists); // Debug log
-      
-      if (formattedPlaylists.length === 0) {
-        console.warn('No playlists found');
-      }
-
       setPlaylists(formattedPlaylists);
       setShowPlaylistDialog(true);
     } catch (error) {
       console.error('Error fetching playlists:', error);
-      // Show error to user
       alert('Failed to load playlists. Please try again.');
     }
   };
@@ -148,7 +144,12 @@ export default function LobbyPage() {
   const handleReady = () => {
     if (!socket) return;
     socket.emit('toggleReady', { lobbyId });
+    setIsReady(!isReady);
   };
+
+  // Find the current player to determine their ready status
+  const currentPlayer = players.find(p => p.id === socket?.id);
+  const isPlayerReady = currentPlayer?.isReady || false;
 
   return (
     <main className="min-h-screen p-4 bg-gradient-to-b from-background to-muted">
@@ -209,7 +210,7 @@ export default function LobbyPage() {
                     )}
                     <Button 
                       className="w-full"
-                      disabled={!selectedPlaylist || players.some(p => !p.isReady)}
+                      disabled={!selectedPlaylist || !players.filter(p => !p.isHost).every(p => p.isReady)}
                       onClick={handleStartGame}
                     >
                       Start Game
@@ -236,9 +237,11 @@ export default function LobbyPage() {
                         </span>
                       )}
                     </div>
-                    <span className={`text-sm ${player.isReady ? "text-green-500" : "text-yellow-500"}`}>
-                      {player.isReady ? "Ready" : "Not Ready"}
-                    </span>
+                    {!player.isHost && (
+                      <span className={`text-sm ${player.isReady ? "text-green-500" : "text-yellow-500"}`}>
+                        {player.isReady ? "Ready" : "Not Ready"}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -248,10 +251,10 @@ export default function LobbyPage() {
             {!isHost && (
               <Button 
                 className="w-full" 
-                variant={isReady ? "outline" : "default"}
+                variant={isPlayerReady ? "outline" : "default"}
                 onClick={handleReady}
               >
-                {isReady ? "Not Ready" : "Ready"}
+                {isPlayerReady ? "Not Ready" : "Ready"}
               </Button>
             )}
           </CardContent>
