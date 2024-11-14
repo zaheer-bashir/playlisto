@@ -1,49 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useUserId } from './useUserId';
 
-let globalSocket: Socket | null = null;
-
-export function useSocket(url: string) {
-  const [isConnecting, setIsConnecting] = useState(false);
+export function useSocket(url: string): Socket | null {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const userId = useUserId();
 
   useEffect(() => {
-    if (!url || isConnecting || globalSocket) return;
+    if (!userId) return;
 
-    setIsConnecting(true);
-    
-    try {
-      if (!globalSocket) {
-        globalSocket = io(url, {
-          transports: ['websocket', 'polling'],
-          reconnectionAttempts: 5,
-          reconnectionDelay: 1000,
-          timeout: 20000,
-          forceNew: false
-        });
-
-        globalSocket.on('connect', () => {
-          console.log('Socket connected successfully');
-          setIsConnecting(false);
-        });
-
-        globalSocket.on('connect_error', (error) => {
-          console.error('Socket connection error:', error);
-          setIsConnecting(false);
-        });
-
-        globalSocket.on('disconnect', (reason) => {
-          console.log('Socket disconnected:', reason);
-        });
+    const socketInstance = io(url, {
+      auth: {
+        userId: userId // Send userId with the initial connection
       }
-    } catch (error) {
-      console.error('Socket initialization error:', error);
-      setIsConnecting(false);
-    }
+    });
+
+    setSocket(socketInstance);
 
     return () => {
-      setIsConnecting(false);
+      socketInstance.close();
     };
-  }, [url]);
+  }, [url, userId]);
 
-  return globalSocket;
+  return socket;
 } 

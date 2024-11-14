@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Music2, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSocket } from '@/hooks/useSocket';
+import { useUserId } from '@/hooks/useUserId';
 
 interface Player {
   id: string;
@@ -31,6 +32,7 @@ export default function LobbyPage() {
   const lobbyId = params.id as string;
   const playerName = searchParams.get("name") || "";
   const isHost = searchParams.get("host") === "true";
+  const userId = useUserId();
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [isReady, setIsReady] = useState(false);
@@ -42,19 +44,19 @@ export default function LobbyPage() {
 
   // Handle joining lobby
   const joinLobby = useCallback(() => {
-    if (!socket || !playerName || !lobbyId) return;
-
-    console.log('Joining lobby with:', { lobbyId, playerName, isHost });
+    if (!socket || !playerName || !lobbyId || !userId) return;
+    console.log('Joining lobby:', { lobbyId, playerName, isHost, userId });
     socket.emit('joinLobby', {
       lobbyId,
       playerName,
-      isHost
+      isHost,
+      userId
     });
-  }, [socket, playerName, lobbyId, isHost]);
+  }, [socket, playerName, lobbyId, isHost, userId]);
 
   // Initial join and socket event setup
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !userId) return;
 
     // Only join if we're not already connected
     if (!socket.connected) {
@@ -82,11 +84,13 @@ export default function LobbyPage() {
     });
 
     return () => {
+      // Clean up all listeners and leave the lobby
       socket.off('lobbyUpdate');
       socket.off('gameStart');
       socket.off('error');
+      socket.emit('leaveLobby', { lobbyId, userId });
     };
-  }, [socket, lobbyId, router, joinLobby]);
+  }, [socket, lobbyId, router, joinLobby, userId]);
 
   // Handle Spotify authentication success
   const handleSpotifyAuth = async (token: string) => {
