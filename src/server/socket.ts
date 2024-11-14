@@ -8,7 +8,6 @@ interface Player {
   name: string;
   isReady: boolean;
   isHost: boolean;
-  score: number;
 }
 
 interface Lobby {
@@ -19,24 +18,6 @@ interface Lobby {
     id: string;
     name: string;
   };
-}
-
-interface GameState {
-  currentRound: number;
-  totalRounds: number;
-  players: Player[];
-  currentSong?: {
-    previewUrl: string;
-    duration: number;
-    startTime: number;
-  };
-}
-
-interface Game {
-  id: string;
-  state: GameState;
-  playlist: any[]; // Replace with proper Spotify track type
-  currentSongIndex: number;
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -123,7 +104,7 @@ export function initializeSocketServer(server: HTTPServer) {
     console.log('Client connected:', { socketId: socket.id, userId });
 
     socket.on('error', (error) => {
-      logEvent('Socket Error', { socketId: socket.id, error });
+      console.error('Socket error:', error);
     });
 
     // Join lobby
@@ -245,8 +226,7 @@ export function initializeSocketServer(server: HTTPServer) {
         userId: userId,
         name: playerName,
         isReady: isHost,
-        isHost: isHost,
-        score: 0
+        isHost: isHost
       };
 
       if (!lobby) {
@@ -312,118 +292,18 @@ export function initializeSocketServer(server: HTTPServer) {
     });
 
     // Start game
-    socket.on('startGame', async ({ lobbyId, accessToken }) => {
-      logEvent('Start Game Request', { lobbyId, socketId: socket.id });
-      
+    socket.on('startGame', ({ lobbyId }) => {
       const lobby = lobbies.get(lobbyId);
-      if (!lobby || lobby.hostId !== socket.id) {
-        logEvent('Start Game Failed', { 
-          reason: !lobby ? 'Lobby not found' : 'Not host',
-          lobbyId,
-          socketId: socket.id 
-        });
-        return;
-      }
-
-      try {
-        // Fetch playlist tracks
-        const tracks = await fetchPlaylistTracks(lobby.spotifyPlaylist!.id, accessToken);
-        
-        // Shuffle tracks
-        const shuffledTracks = tracks.sort(() => Math.random() - 0.5);
-
-        const game: Game = {
-          id: lobbyId,
-          state: {
-            currentRound: 1,
-            totalRounds: Math.min(10, shuffledTracks.length),
-            players: lobby.players.map(p => ({
-              ...p,
-              score: 0
-            }))
-          },
-          playlist: shuffledTracks,
-          currentSongIndex: 0
-        };
-
-        games.set(lobbyId, game);
-        logEvent('Game Created', { gameId: lobbyId, players: game.state.players });
-
-        // Start first round
-        await startNewRound(lobbyId, io);
-
-        io.to(lobbyId).emit('gameStateUpdate', game.state);
-      } catch (error) {
-        logEvent('Start Game Error', { error, lobbyId });
-        io.to(lobbyId).emit('error', 'Failed to start game');
-      }
-    });
-
-    // Handle guess submission
-    socket.on('submitGuess', ({ gameId, guess }) => {
-      logEvent('Guess Submitted', { gameId, socketId: socket.id, guess });
-      
-      const game = games.get(gameId);
-      if (!game) {
-        logEvent('Guess Failed', { reason: 'Game not found', gameId });
-        return;
-      }
-
-      const player = game.state.players.find(p => p.id === socket.id);
-      if (!player) {
-        logEvent('Guess Failed', { reason: 'Player not found', gameId, socketId: socket.id });
-        return;
-      }
-
-      // Compare guess with current song
-      const currentSong = game.playlist[game.currentSongIndex];
-      const isCorrect = compareGuess(guess, currentSong.name);
-
-      logEvent('Guess Result', { 
-        gameId,
-        playerId: socket.id,
-        guess,
-        isCorrect,
-        correctAnswer: currentSong.name
-      });
-
-      if (isCorrect) {
-        // Award points based on timing
-        const points = calculatePoints(game.state.currentSong?.startTime);
-        player.score += points;
-
-        // Notify all players
-        io.to(gameId).emit('guessResult', {
-          playerId: socket.id,
-          playerName: player.name,
-          correct: true,
-          points,
-          guess
-        });
-
-        // Check if round should end
-        checkRoundEnd(gameId, io);
-      } else {
-        socket.emit('guessResult', {
-          correct: false,
-          guess
-        });
-      }
-
-      io.to(gameId).emit('gameStateUpdate', game.state);
-    });
-
-    // Handle song extension (host only)
-    socket.on('extendSong', ({ gameId }) => {
-      const game = games.get(gameId);
-      if (!game || !game.state.currentSong) return;
-
-      const lobby = lobbies.get(gameId);
       if (!lobby || lobby.hostId !== socket.id) return;
 
-      // Extend current song duration
-      game.state.currentSong.duration += 500; // Add 0.5 seconds
-      io.to(gameId).emit('songExtended', game.state.currentSong);
+      // Check if all non-host players are ready
+      const allPlayersReady = lobby.players
+        .filter(p => !p.isHost)
+        .every(p => p.isReady);
+
+      if (allPlayersReady) {
+        io.to(lobbyId).emit('gameStart', lobby.spotifyPlaylist);
+      }
     });
 
     // Handle disconnection
@@ -485,121 +365,4 @@ export function initializeSocketServer(server: HTTPServer) {
   });
 
   return io;
-}
-
-// Helper functions
-async function startNewRound(gameId: string, io: Server) {
-  const game = games.get(gameId);
-  if (!game) return;
-  
-  // Get next song
-  const song = game.playlist[game.currentSongIndex];
-  
-  game.state.currentSong = {
-    previewUrl: song.preview_url,
-    duration: 500, // Start with 0.5 seconds
-    startTime: Date.now()
-  };
-
-  // Broadcast new round
-  io.to(gameId).emit('newRound', {
-    round: game.state.currentRound,
-    song: game.state.currentSong
-  });
-}
-
-// Update the compareGuess function to use fuzzy matching
-function compareGuess(guess: string, answer: string): boolean {
-  // Convert both strings to lowercase and remove special characters
-  const normalizeString = (str: string) => {
-    return str
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .trim();
-  };
-
-  const normalizedGuess = normalizeString(guess);
-  const normalizedAnswer = normalizeString(answer);
-
-  // Exact match
-  if (normalizedGuess === normalizedAnswer) return true;
-
-  // Check if the guess is contained within the answer or vice versa
-  if (normalizedAnswer.includes(normalizedGuess) || normalizedGuess.includes(normalizedAnswer)) {
-    return true;
-  }
-
-  // Calculate Levenshtein distance for fuzzy matching
-  const maxDistance = Math.floor(Math.max(normalizedGuess.length, normalizedAnswer.length) * 0.3);
-  const distance = levenshteinDistance(normalizedGuess, normalizedAnswer);
-  
-  return distance <= maxDistance;
-}
-
-// Helper function to calculate Levenshtein distance
-function levenshteinDistance(str1: string, str2: string): number {
-  const m = str1.length;
-  const n = str2.length;
-  const dp: number[][] = Array(m + 1).fill(0).map(() => Array(n + 1).fill(0));
-
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (str1[i - 1] === str2[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1];
-      } else {
-        dp[i][j] = Math.min(
-          dp[i - 1][j - 1] + 1,
-          dp[i - 1][j] + 1,
-          dp[i][j - 1] + 1
-        );
-      }
-    }
-  }
-
-  return dp[m][n];
-}
-
-function calculatePoints(startTime?: number): number {
-  if (!startTime) return 50;
-  
-  const timeTaken = Date.now() - startTime;
-  // Award more points for faster guesses
-  return Math.max(100 - Math.floor(timeTaken / 1000) * 10, 50);
-}
-
-function checkRoundEnd(gameId: string, io: Server) {
-  const game = games.get(gameId);
-  if (!game) return;
-
-  const allGuessedCorrectly = game.state.players.every(p => 
-    // Add logic to check if player has guessed correctly
-    true
-  );
-
-  if (allGuessedCorrectly) {
-    endRound(gameId, io);
-  }
-}
-
-function endRound(gameId: string, io: Server) {
-  const game = games.get(gameId);
-  if (!game) return;
-
-  // Move to next round
-  game.state.currentRound++;
-  game.currentSongIndex++;
-
-  if (game.state.currentRound > game.state.totalRounds) {
-    // End game
-    io.to(gameId).emit('gameEnd', {
-      finalScores: game.state.players
-    });
-    games.delete(gameId);
-  } else {
-    // Start next round
-    startNewRound(gameId, io);
-  }
 }

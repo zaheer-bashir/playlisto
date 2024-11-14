@@ -42,9 +42,6 @@ export default function LobbyPage() {
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
   const socket = useSocket(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001');
 
-  // Add loading state for start game button
-  const [isStarting, setIsStarting] = useState(false);
-
   // Handle joining lobby
   const joinLobby = useCallback(() => {
     if (!socket || !playerName || !lobbyId || !userId) return;
@@ -143,57 +140,9 @@ export default function LobbyPage() {
     });
   };
 
-  const handleStartGame = async () => {
-    if (!socket || !selectedPlaylist || !spotifyToken) {
-      console.error('Missing required data:', { 
-        hasSocket: !!socket, 
-        hasPlaylist: !!selectedPlaylist, 
-        hasToken: !!spotifyToken 
-      });
-      return;
-    }
-    
-    try {
-      setIsStarting(true);
-      console.log('Starting game with:', {
-        lobbyId,
-        playlistId: selectedPlaylist.id,
-        tokenLength: spotifyToken.length
-      });
-
-      // Emit start game event
-      socket.emit('startGame', { 
-        lobbyId,
-        accessToken: spotifyToken 
-      });
-
-      // Add event listener for game start acknowledgment
-      socket.once('gameStateUpdate', (gameState) => {
-        console.log('Game started successfully:', gameState);
-        router.push(`/game/${lobbyId}?playlist=${selectedPlaylist.id}&spotify_token=${spotifyToken}`);
-      });
-
-      // Add error handling
-      socket.once('error', (error) => {
-        console.error('Error starting game:', error);
-        alert('Failed to start game. Please try again.');
-        setIsStarting(false);
-      });
-
-      // Add timeout for error handling
-      setTimeout(() => {
-        if (isStarting) {
-          console.error('Game start timeout');
-          alert('Game start timed out. Please try again.');
-          setIsStarting(false);
-        }
-      }, 5000);
-
-    } catch (error) {
-      console.error('Error in handleStartGame:', error);
-      alert('Failed to start game. Please try again.');
-      setIsStarting(false);
-    }
+  const handleStartGame = () => {
+    if (!socket || !selectedPlaylist) return;
+    socket.emit('startGame', { lobbyId });
   };
 
   const handleReady = () => {
@@ -265,22 +214,10 @@ export default function LobbyPage() {
                     )}
                     <Button 
                       className="w-full"
-                      disabled={
-                        !selectedPlaylist || 
-                        !spotifyToken ||
-                        !players.filter(p => !p.isHost).every(p => p.isReady) ||
-                        isStarting
-                      }
+                      disabled={!selectedPlaylist || !players.filter(p => !p.isHost).every(p => p.isReady)}
                       onClick={handleStartGame}
                     >
-                      {isStarting ? (
-                        <>
-                          <span className="animate-spin mr-2">⏳</span>
-                          Starting Game...
-                        </>
-                      ) : (
-                        'Start Game'
-                      )}
+                      Start Game
                     </Button>
                   </div>
                 )}
