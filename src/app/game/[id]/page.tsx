@@ -114,6 +114,9 @@ export default function GamePage() {
   // Track host status in state
   const [isHost, setIsHost] = useState<boolean>(false);
 
+  // Add state for snippet duration
+  const [snippetDuration, setSnippetDuration] = useState(500); // Start with 0.5 seconds
+
   useEffect(() => {
     console.log("gameState", gameState);
   }, [gameState]);
@@ -323,8 +326,13 @@ export default function GamePage() {
   };
 
   const handleExtendDuration = () => {
-    if (!socket || !isHost || !gameState.isPlaying) return;
-    socket.emit("extendPlayback", { lobbyId: gameId });
+    setSnippetDuration(prev => prev + 500); // Increase by 0.5 seconds
+  };
+
+  const handleSkipRound = () => {
+    if (socket) {
+      socket.emit("endRound", { lobbyId: gameId });
+    }
   };
 
   const handleStartRound = async () => {
@@ -599,48 +607,33 @@ export default function GamePage() {
                     </h3>
                     <div className="flex flex-col gap-4">
                       {/* Audio Controls for Host */}
-                      {gameState.currentSong && (
+                      {gameState.currentSong && gameState.isPlaying && (
                         <div className="flex items-center gap-2">
                           <AudioPlayer
                             songId={gameState.currentSong.id}
-                            duration={gameState.currentSong.duration}
-                            onPlaybackComplete={handlePlaybackComplete}
+                            duration={snippetDuration}
+                            onPlaybackComplete={() => {}}
                             isHost={isHost}
                             onExtendDuration={handleExtendDuration}
-                            autoPlay={false}
+                            onSkipRound={handleSkipRound}
                             spotifyToken={spotifyToken || ""}
                             showControls={true}
                           />
                         </div>
                       )}
                       
-                      {/* Round Control Buttons */}
-                      <div className="flex gap-4">
-                        {!gameState.isPlaying ? (
-                          <Button
-                            className="w-full"
-                            onClick={handleStartRound}
-                            disabled={!availableSongs.length}
-                          >
-                            <Play className="h-4 w-4 mr-2" />
-                            Start Next Round{" "}
-                            {!availableSongs.length && "(No songs available)"}
-                          </Button>
-                        ) : (
-                          <Button
-                            className="w-full"
-                            variant="secondary"
-                            onClick={() => {
-                              if (socket) {
-                                socket.emit("endRound", { lobbyId: gameId });
-                              }
-                            }}
-                          >
-                            <SkipForward className="h-4 w-4 mr-2" />
-                            Skip Round
-                          </Button>
-                        )}
-                      </div>
+                      {/* Start Round button (only show when round is not active) */}
+                      {!gameState.isPlaying && (
+                        <Button
+                          className="w-full"
+                          onClick={handleStartRound}
+                          disabled={!availableSongs.length}
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Start Next Round{" "}
+                          {!availableSongs.length && "(No songs available)"}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -649,57 +642,7 @@ export default function GamePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Left Column - Game Play */}
                   <div className="space-y-4">
-                    {/* Current Song - Update the condition to show audio player */}
-                    {gameState.currentSong && gameState.isPlaying && (
-                      <div className="p-4 bg-muted rounded-lg">
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <h3 className="font-semibold flex items-center gap-2">
-                              <Music className="h-4 w-4" />
-                              Current Song
-                            </h3>
-                            {gameState.isPlaying && (
-                              <span className="text-sm text-muted-foreground">
-                                {Math.max(
-                                  0,
-                                  Math.floor(
-                                    (gameState.currentSong.duration -
-                                      (Date.now() -
-                                        gameState.currentSong.startTime)) /
-                                      1000
-                                  )
-                                )}
-                                s
-                              </span>
-                            )}
-                          </div>
-                          {/* Remove AudioPlayer from here since we don't want controls in this section */}
-                          {isHost && (
-                            <div className="text-xs text-muted-foreground mt-2">
-                              Playing: {gameState.currentSong.name} ({gameState.currentSong.id})
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Debug info for audio state */}
-                    {isHost && (
-                      <div className="text-sm text-muted-foreground">
-                        <p>
-                          Debug:{" "}
-                          {gameState.isPlaying
-                            ? "Round Active"
-                            : "Round Inactive"}
-                        </p>
-                        <p>Has Song: {gameState.currentSong ? "Yes" : "No"}</p>
-                        <p>
-                          Preview URL:{" "}
-                          {gameState.currentSong?.previewUrl?.substring(0, 50)}
-                          ...
-                        </p>
-                      </div>
-                    )}
+                    {/* */}
 
                     {/* Guessing Section */}
                     {gameState.isPlaying && (

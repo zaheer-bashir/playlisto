@@ -526,6 +526,44 @@ function initializeSocketServer(server) {
       var lobbyId = _a.lobbyId;
       gameUsedSongs.delete(lobbyId);
     });
+    // When handling a correct guess:
+    socket.on('submitGuess', ({ lobbyId, guess, snippetDuration }) => {
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) return;
+
+      const player = lobby.players.find(p => p.id === socket.id);
+      if (!player) return;
+
+      const isCorrect =
+        guess.toLowerCase() ===
+        lobby.gameState?.currentSong?.name?.toLowerCase();
+      
+      if (isCorrect) {
+        // Calculate points based on snippet duration
+        // Example: 1000 points at 0.5s, decreasing by 100 points for each additional 0.5s
+        const basePoints = 1000;
+        const pointsDeduction = Math.floor((snippetDuration - 500) / 500) * 100;
+        const points = Math.max(100, basePoints - pointsDeduction);
+
+        player.score += points;
+        
+        // Emit guess result
+        io.to(lobbyId).emit('guessResult', {
+          playerId: player.id,
+          playerName: player.name,
+          correct: true,
+          points,
+          guess
+        });
+
+        // Check if all players have guessed correctly
+        const allGuessedCorrectly = lobby.players.every(p => p.hasGuessedCorrectly);
+        if (allGuessedCorrectly) {
+          // End the round automatically
+          endRound(lobbyId);
+        }
+      }
+    });
   });
   return io;
 }

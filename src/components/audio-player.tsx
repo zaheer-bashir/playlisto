@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Button } from "./ui/button";
-import { Pause, Play, Plus } from "lucide-react";
+import { Pause, Play, Plus, SkipForward } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
 interface AudioPlayerProps {
@@ -11,7 +11,7 @@ interface AudioPlayerProps {
   onPlaybackComplete: () => void;
   isHost: boolean;
   onExtendDuration: () => void;
-  autoPlay?: boolean;
+  onSkipRound: () => void;
   spotifyToken: string;
   showControls?: boolean;
 }
@@ -22,17 +22,19 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   onPlaybackComplete,
   isHost,
   onExtendDuration,
-  autoPlay = false,
+  onSkipRound,
   spotifyToken,
   showControls = true,
 }) => {
+  
   const [isPlaying, setIsPlaying] = useState(false);
   const [player, setPlayer] = useState<Spotify.Player | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
-  const initializationTimeout = useRef<NodeJS.Timeout>();
+  const playbackTimeout = useRef<NodeJS.Timeout>();
   const sdkReady = useRef(false);
+  const initializationTimeout = useRef<NodeJS.Timeout>();
 
   // Initialize Spotify SDK script
   useEffect(() => {
@@ -145,83 +147,92 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     };
   }, [showControls, spotifyToken]);
 
-  // Play the song when deviceId and songId are available
-  useEffect(() => {
+  // Modified play function to handle snippet playback with compensation for delay
+  const playSnippet = async () => {
     if (!deviceId || !songId || !spotifyToken) return;
 
-    const playSong = async () => {
-      try {
-        // Transfer playback to our device first
-        await fetch('https://api.spotify.com/v1/me/player', {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${spotifyToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            device_ids: [deviceId],
-            play: false
-          })
-        });
-
-        // Then start playing
-        const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${spotifyToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            uris: [`spotify:track:${songId}`]
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to play song: ${response.status}`);
-        }
-
-        if (autoPlay) {
-          setIsPlaying(true);
-        }
-      } catch (error) {
-        console.error('🔴 Error playing song:', {
-          songId,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          timestamp: new Date().toISOString()
-        });
-        setError('Failed to play song');
+    try {
+      // Stop any existing playback
+      if (playbackTimeout.current) {
+        clearTimeout(playbackTimeout.current);
       }
-    };
+      if (isPlaying) {
+        await player?.pause();
+      }
 
-    playSong();
-  }, [deviceId, songId, spotifyToken, autoPlay]);
+      // Start a timestamp to measure actual playback start
+      const startTime = Date.now();
 
-  // Handle playback control
-  const togglePlayback = async () => {
-    if (!player) return;
+      // Transfer playback to our device first
+      await fetch('https://api.spotify.com/v1/me/player', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${spotifyToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          device_ids: [deviceId],
+          play: false
+        })
+      });
 
-    if (isPlaying) {
-      await player.pause();
-    } else {
-      await player.resume();
+      // Start playing from the beginning
+      const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${spotifyToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          uris: [`spotify:track:${songId}`],
+          position_ms: 0
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to play song: ${response.status}`);
+      }
+
+      setIsPlaying(true);
+
+      // Calculate the actual delay in starting playback
+      const actualDelay = Date.now() - startTime;
+      
+      // Adjust the duration to compensate for the delay
+      const adjustedDuration = duration + actualDelay;
+
+      console.log('🟡 Playback timing:', {
+        requestedDuration: duration,
+        actualDelay,
+        adjustedDuration,
+        timestamp: new Date().toISOString()
+      });
+
+      // Set timeout to stop playback after adjusted duration
+      playbackTimeout.current = setTimeout(async () => {
+        await player?.pause();
+        setIsPlaying(false);
+      }, adjustedDuration);
+
+    } catch (error) {
+      console.error('🔴 Error playing song:', {
+        songId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
+      setError('Failed to play song');
     }
-    setIsPlaying(!isPlaying);
   };
 
-  // Handle duration and completion
+  // Cleanup on unmount or songId change
   useEffect(() => {
-    if (!isPlaying) return;
-
-    const timer = setTimeout(() => {
-      if (onPlaybackComplete) {
-        player?.pause();
-        setIsPlaying(false);
-        onPlaybackComplete();
+    return () => {
+      if (playbackTimeout.current) {
+        clearTimeout(playbackTimeout.current);
       }
-    }, duration);
-
-    return () => clearTimeout(timer);
-  }, [isPlaying, duration, onPlaybackComplete, player]);
+      player?.pause();
+    };
+  }, [songId, player]);
 
   // Only render controls if showControls is true
   if (!showControls) {
@@ -244,20 +255,30 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           <Button
             size="icon"
             variant={isPlaying ? "secondary" : "default"}
-            onClick={togglePlayback}
-            disabled={!player || !deviceId}
+            onClick={playSnippet}
+            disabled={!player || !deviceId || isPlaying}
           >
-            {isPlaying ? (
-              <Pause className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
+            <Play className="h-4 w-4" />
           </Button>
-          {isHost && onExtendDuration && (
-            <Button size="icon" variant="outline" onClick={onExtendDuration}>
-              <Plus className="h-4 w-4" />
-            </Button>
-          )}
+          <Button 
+            size="icon" 
+            variant="outline" 
+            onClick={onExtendDuration}
+            disabled={isPlaying}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="secondary"
+            onClick={onSkipRound}
+            disabled={isPlaying}
+          >
+            <SkipForward className="h-4 w-4" />
+          </Button>
+          <span className="text-sm text-muted-foreground ml-2">
+            {(duration / 1000).toFixed(1)}s
+          </span>
         </div>
       )}
     </div>
