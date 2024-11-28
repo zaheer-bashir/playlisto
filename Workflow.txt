@@ -1,0 +1,127 @@
+Playlisto Game Workflow
+======================
+
+1. Initial Game/Lobby Creation
+----------------------------
+When a user creates or joins a lobby through the home page (src/app/page.tsx):
+
+a) Creating a Game (Host):
+- User enters their name on the home page
+- Clicks "Create New Lobby" button
+- System generates a random lobby code
+- Redirects to /lobby/[lobbyId] with host=true parameter
+- Frontend establishes WebSocket connection (useSocket hook)
+- Emits 'joinLobby' event with isHost=true
+- Backend (socket.ts) creates new lobby in lobbies Map
+- Backend emits 'lobbyUpdate' to all connected clients
+
+b) Joining a Game:
+- User enters name and lobby code
+- Clicks "Join Lobby" button
+- Redirects to /lobby/[lobbyId]
+- Frontend establishes WebSocket connection
+- Emits 'joinLobby' event
+- Backend validates lobby exists and player name is unique
+- Backend adds player to lobby and emits 'lobbyUpdate'
+
+2. Lobby Management (src/app/lobby/[id]/page.tsx)
+----------------------------------------------
+Host Responsibilities:
+- Can select Spotify playlist
+- Waits for all players to mark themselves ready
+- Initiates game start
+
+Player Responsibilities:
+- Can toggle ready status
+- Waits for host to start game
+
+Socket Events in Lobby:
+- 'toggleReady': Players mark themselves ready
+- 'updatePlaylist': Host selects playlist
+- 'updateSpotifyToken': Host authenticates with Spotify
+- 'startGame': Host initiates game start
+
+3. Game Start Flow
+----------------
+When host clicks "Start Game":
+
+Frontend (src/app/lobby/[id]/page.tsx):
+1. Emits 'startGame' event with:
+   - lobbyId
+   - selected playlist
+   - Spotify token
+
+Backend (src/server/socket.ts):
+1. Validates:
+   - Lobby exists
+   - All players ready
+   - Has playlist and token
+2. Initializes game state:
+   - Sets current round to 1
+   - Resets player scores
+   - Sets up game configuration
+3. Emits 'gameStart' event to all players
+4. Redirects all players to game page
+
+4. Game Play (src/app/game/[id]/page.tsx)
+---------------------------------------
+Round Structure:
+1. Host initiates round:
+   - Frontend emits 'startRound'
+   - Backend selects random song
+   - Emits 'playSong' to all players
+
+2. During round:
+   - Players submit guesses ('submitGuess' event)
+   - Backend validates guesses
+   - Emits 'guessResult' to all players
+   - Updates scores accordingly
+
+3. Round ends when:
+   - Correct guess is made
+   - Time runs out
+   - Host skips round
+
+5. Socket Event Flow Summary
+-------------------------
+Key Socket Events (defined in src/server/socket.ts):
+- 'joinLobby': Player joining lobby
+- 'toggleReady': Player ready status
+- 'updatePlaylist': Host playlist selection
+- 'startGame': Game initialization
+- 'startRound': Begin new round
+- 'submitGuess': Player guess submission
+- 'guessResult': Guess feedback
+- 'roundEnd': Round completion
+- 'disconnect': Player disconnection handling
+
+6. State Management
+-----------------
+Backend (src/server/socket.ts):
+- lobbies: Map<string, Lobby>
+- socketToLobbyMap: Map<string, string>
+- userSocketMap: Map<string, string>
+
+Frontend:
+- React state for UI components
+- Socket.io for real-time updates
+- URL parameters for routing
+
+7. File Navigation
+----------------
+Key Files:
+- src/app/page.tsx: Home page/entry point
+- src/app/lobby/[id]/page.tsx: Lobby management
+- src/app/game/[id]/page.tsx: Game interface
+- src/server/socket.ts: Backend socket logic
+- src/hooks/useSocket.ts: Socket connection hook
+- src/components/: UI components
+
+8. Error Handling
+---------------
+- Socket disconnection recovery
+- Player reconnection logic
+- Invalid lobby/game state handling
+- Spotify API error management
+
+This workflow demonstrates the full-stack interaction between the frontend React components and the backend Socket.io server, managing real-time game state and player interactions. 

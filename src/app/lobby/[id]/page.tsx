@@ -40,12 +40,41 @@ export default function LobbyPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
-  const socket = useSocket(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001');
+  const { socket, isConnected } = useSocket(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001');
+
+  // Add effect to track component mount and initial props
+  useEffect(() => {
+    console.log('LobbyPage mounted:', {
+      lobbyId,
+      playerName,
+      isHost,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+  }, []);
 
   // Handle joining lobby
   const joinLobby = useCallback(() => {
-    if (!socket || !playerName || !lobbyId || !userId) return;
-    console.log('Joining lobby:', { lobbyId, playerName, isHost, userId });
+    if (!socket || !playerName || !lobbyId || !userId) {
+      console.log('Missing required data for joining lobby:', {
+        hasSocket: !!socket,
+        playerName,
+        lobbyId,
+        userId,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    console.log('Attempting to join lobby:', {
+      socketId: socket.id,
+      lobbyId,
+      playerName,
+      isHost,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+
     socket.emit('joinLobby', {
       lobbyId,
       playerName,
@@ -54,18 +83,38 @@ export default function LobbyPage() {
     });
   }, [socket, playerName, lobbyId, isHost, userId]);
 
+  // Add effect to automatically join lobby when dependencies are ready
+  useEffect(() => {
+    if (socket && isConnected) {
+      console.log('Socket connected, attempting to join lobby:', {
+        socketId: socket.id,
+        timestamp: new Date().toISOString()
+      });
+      joinLobby();
+    }
+  }, [socket, isConnected, joinLobby]);
+
   // Initial join and socket event setup
   useEffect(() => {
     if (!socket || !userId) return;
 
-    // Only join if we're not already connected
-    if (!socket.connected) {
-      joinLobby();
-    }
+    console.log('Setting up lobby socket listeners:', {
+      socketId: socket.id,
+      userId,
+      timestamp: new Date().toISOString()
+    });
 
-    // Listen for lobby updates
+    // Listen for lobby updates with enhanced logging
     socket.on('lobbyUpdate', (lobby) => {
-      console.log('Received lobby update:', lobby);
+      console.log('Received lobbyUpdate:', {
+        lobbyId: lobby?.id,
+        players: lobby?.players?.map((p: Player) => ({
+          id: p.id,
+          name: p.name,
+          isHost: p.isHost
+        })),
+        timestamp: new Date().toISOString()
+      });
       setPlayers(lobby.players);
       if (lobby.spotifyPlaylist) {
         setSelectedPlaylist(lobby.spotifyPlaylist);
@@ -81,6 +130,20 @@ export default function LobbyPage() {
     socket.on('error', (message) => {
       alert(message);
       router.push('/');
+    });
+
+    // Add connection status logging
+    socket.on('connect', () => {
+      console.log('Socket connected in lobby:', {
+        socketId: socket.id,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected in lobby:', {
+        timestamp: new Date().toISOString()
+      });
     });
 
     return () => {
@@ -154,6 +217,19 @@ export default function LobbyPage() {
   // Find the current player to determine their ready status
   const currentPlayer = players.find(p => p.id === socket?.id);
   const isPlayerReady = currentPlayer?.isReady || false;
+
+  // Update players state effect with more logging
+  useEffect(() => {
+    console.log('Current players state:', {
+      count: players.length,
+      players: players.map(p => ({
+        id: p.id,
+        name: p.name,
+        isHost: p.isHost
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }, [players]);
 
   return (
     <main className="min-h-screen p-4 bg-gradient-to-b from-background to-muted">
