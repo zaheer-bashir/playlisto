@@ -13,11 +13,11 @@ export function useSocket(url: string): { socket: Socket | null; isConnected: bo
 
   useEffect(() => {
     if (!userId) {
-      console.log('No userId available for socket connection');
+      console.log('🔴 No userId available for socket connection');
       return;
     }
 
-    console.log('Initializing socket connection:', {
+    console.log('🟡 Initializing socket connection:', {
       userId,
       url,
       timestamp: new Date().toISOString()
@@ -27,11 +27,13 @@ export function useSocket(url: string): { socket: Socket | null; isConnected: bo
       auth: { userId },
       reconnection: true,
       reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnectionDelay: 1000,
+      forceNew: false,
+      multiplex: true
     });
 
     socketInstance.on('connect_error', (error) => {
-      console.error('Socket connection error:', {
+      console.error('🔴 Socket connection error:', {
         error: error.message,
         userId,
         timestamp: new Date().toISOString()
@@ -39,7 +41,7 @@ export function useSocket(url: string): { socket: Socket | null; isConnected: bo
     });
 
     socketInstance.on('connect', () => {
-      console.log('Socket connected:', {
+      console.log('🟢 Socket connected:', {
         socketId: socketInstance.id,
         userId,
         timestamp: new Date().toISOString()
@@ -48,7 +50,7 @@ export function useSocket(url: string): { socket: Socket | null; isConnected: bo
     });
 
     socketInstance.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', {
+      console.log('🔴 Socket disconnected:', {
         reason,
         userId,
         timestamp: new Date().toISOString()
@@ -57,7 +59,7 @@ export function useSocket(url: string): { socket: Socket | null; isConnected: bo
     });
 
     return () => {
-      console.log('Cleaning up socket connection:', {
+      console.log('🟡 Cleaning up socket connection:', {
         socketId: socketInstance.id,
         userId,
         timestamp: new Date().toISOString()

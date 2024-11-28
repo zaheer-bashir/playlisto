@@ -1,22 +1,31 @@
-import { useEffect, useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useState, useEffect } from 'react';
 
 export function useUserId() {
-  const [userId, setUserId] = useState<string | null>(null);
+    const [userId, setUserId] = useState<string | null>(() => {
+        // Try to get from localStorage first
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('userId');
+        }
+        return null;
+    });
 
-  useEffect(() => {
-    // Try to get existing userId from localStorage
-    const storedUserId = localStorage.getItem('playlisto_user_id');
-    
-    if (storedUserId) {
-      setUserId(storedUserId);
-    } else {
-      // Generate new userId if none exists
-      const newUserId = uuidv4();
-      localStorage.setItem('playlisto_user_id', newUserId);
-      setUserId(newUserId);
-    }
-  }, []);
+    useEffect(() => {
+        if (!userId) {
+            // Generate new userId if none exists
+            const newUserId = crypto.randomUUID();
+            setUserId(newUserId);
+            localStorage.setItem('userId', newUserId);
+            console.log('🟢 Generated new userId:', {
+                userId: newUserId,
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            console.log('🟢 Using existing userId:', {
+                userId,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }, []);
 
-  return userId;
+    return userId;
 } 
