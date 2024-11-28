@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Music } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 
 interface Song {
@@ -20,116 +20,138 @@ interface SongSearchProps {
 }
 
 export function SongSearch({ spotifyToken, onGuess, disabled }: SongSearchProps) {
-  const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<Song[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const debouncedQuery = useDebounce(query, 300);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showResults, setShowResults] = useState(false);
+  
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
+  // Search songs when debounced search term changes
   useEffect(() => {
-    const fetchSuggestions = async () => {
-      if (!debouncedQuery.trim() || !spotifyToken) {
-        setSuggestions([]);
-        return;
-      }
+    if (!debouncedSearchTerm.trim() || !spotifyToken) {
+      setResults([]);
+      return;
+    }
 
+    const searchSongs = async () => {
       setIsLoading(true);
+      setError(null);
+
       try {
         const response = await fetch(
-          `https://api.spotify.com/v1/search?q=${encodeURIComponent(debouncedQuery)}&type=track&limit=5`,
+          `https://api.spotify.com/v1/search?q=${encodeURIComponent(
+            debouncedSearchTerm
+          )}&type=track&limit=5`,
           {
             headers: {
-              'Authorization': `Bearer ${spotifyToken}`,
-              'Content-Type': 'application/json'
-            }
+              Authorization: `Bearer ${spotifyToken}`,
+              'Content-Type': 'application/json',
+            },
           }
         );
 
-        if (!response.ok) throw new Error('Failed to fetch suggestions');
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Spotify token has expired');
+          }
+          throw new Error('Failed to search songs');
+        }
 
         const data = await response.json();
-        const formattedSuggestions: Song[] = data.tracks.items.map((track: any) => ({
+        
+        const formattedResults: Song[] = data.tracks.items.map((track: any) => ({
           id: track.id,
           name: track.name,
           artists: track.artists.map((artist: any) => artist.name),
-          album: track.album.name
+          album: track.album.name,
         }));
 
-        setSuggestions(formattedSuggestions);
+        setResults(formattedResults);
+        setShowResults(true);
       } catch (error) {
-        console.error('Error fetching suggestions:', error);
-        setSuggestions([]);
+        console.error('Search error:', error);
+        setError(error instanceof Error ? error.message : 'An error occurred');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchSuggestions();
-  }, [debouncedQuery, spotifyToken]);
+    searchSongs();
+  }, [debouncedSearchTerm, spotifyToken]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleSubmit = (songName: string) => {
+  const handleSubmitGuess = (songName: string) => {
     onGuess(songName);
-    setQuery('');
-    setSuggestions([]);
-    setShowSuggestions(false);
+    setSearchTerm('');
+    setResults([]);
+    setShowResults(false);
   };
 
+  // Close results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setShowResults(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Input
             placeholder="Search for a song..."
-            value={query}
+            value={searchTerm}
             onChange={(e) => {
-              setQuery(e.target.value);
-              setShowSuggestions(true);
+              setSearchTerm(e.target.value);
+              setShowResults(true);
             }}
-            onFocus={() => setShowSuggestions(true)}
+            onFocus={() => setShowResults(true)}
             disabled={disabled}
             className="pr-10"
           />
           {isLoading && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-            </div>
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+          )}
+          {!isLoading && (
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           )}
         </div>
-        <Button
-          onClick={() => handleSubmit(query)}
-          disabled={!query.trim() || disabled}
-        >
-          <Search className="h-4 w-4 mr-2" />
-          Guess
-        </Button>
       </div>
 
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto">
-          {suggestions.map((song) => (
-            <button
-              key={song.id}
-              className="w-full px-4 py-2 text-left hover:bg-muted flex flex-col gap-1"
-              onClick={() => handleSubmit(song.name)}
-            >
-              <span className="font-medium">{song.name}</span>
-              <span className="text-sm text-muted-foreground">
-                {song.artists.join(', ')} • {song.album}
-              </span>
-            </button>
-          ))}
+      {/* Search Results Dropdown */}
+      {showResults && (searchTerm || results.length > 0) && (
+        <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg">
+          {error ? (
+            <div className="p-2 text-sm text-destructive">{error}</div>
+          ) : results.length === 0 ? (
+            <div className="p-2 text-sm text-muted-foreground">
+              {isLoading ? 'Searching...' : 'No songs found'}
+            </div>
+          ) : (
+            <ul className="max-h-[300px] overflow-auto">
+              {results.map((song) => (
+                <li
+                  key={song.id}
+                  className="border-b last:border-0"
+                >
+                  <button
+                    onClick={() => handleSubmitGuess(song.name)}
+                    className="w-full px-4 py-2 text-left hover:bg-muted flex items-start gap-3 transition-colors"
+                    disabled={disabled}
+                  >
+                    <Music className="h-4 w-4 mt-1 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{song.name}</div>
+                      <div className="text-sm text-muted-foreground truncate">
+                        {song.artists.join(', ')}
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

@@ -527,25 +527,34 @@ function initializeSocketServer(server) {
       gameUsedSongs.delete(lobbyId);
     });
     // When handling a correct guess:
-    socket.on('submitGuess', ({ lobbyId, guess, snippetDuration }) => {
+    socket.on('submitGuess', ({ lobbyId, songName, snippetDuration }) => {
       const lobby = lobbies.get(lobbyId);
-      if (!lobby) return;
+      if (!lobby || !lobby.gameState) return;
 
       const player = lobby.players.find(p => p.id === socket.id);
       if (!player) return;
 
-      const isCorrect =
-        guess.toLowerCase() ===
-        lobby.gameState?.currentSong?.name?.toLowerCase();
+      console.log("🟡 Received guess:", {
+        lobbyId,
+        playerName: player.name,
+        guess: songName,
+        snippetDuration,
+        timestamp: new Date().toISOString()
+      });
+
+      const isCorrect = songName.toLowerCase() === lobby.gameState.currentSong?.name?.toLowerCase();
       
       if (isCorrect) {
         // Calculate points based on snippet duration
-        // Example: 1000 points at 0.5s, decreasing by 100 points for each additional 0.5s
         const basePoints = 1000;
         const pointsDeduction = Math.floor((snippetDuration - 500) / 500) * 100;
         const points = Math.max(100, basePoints - pointsDeduction);
 
-        player.score += points;
+        // Update player score
+        player.score = (player.score || 0) + points;
+        
+        // Mark player as having guessed correctly for this round
+        player.hasGuessedCorrectly = true;
         
         // Emit guess result
         io.to(lobbyId).emit('guessResult', {
@@ -553,15 +562,37 @@ function initializeSocketServer(server) {
           playerName: player.name,
           correct: true,
           points,
-          guess
+          guess: songName
         });
 
         // Check if all players have guessed correctly
         const allGuessedCorrectly = lobby.players.every(p => p.hasGuessedCorrectly);
         if (allGuessedCorrectly) {
           // End the round automatically
-          endRound(lobbyId);
+          lobby.gameState.isPlaying = false;
+          lobby.gameState.currentSong = undefined;
+          lobby.gameState.currentRound += 1;
+
+          // Reset hasGuessedCorrectly for next round
+          lobby.players.forEach(p => p.hasGuessedCorrectly = false);
+
+          // Save and emit updated state
+          lobbies.set(lobbyId, lobby);
+          io.to(lobbyId).emit("gameState", lobby.gameState);
+          io.to(lobbyId).emit("roundEnd", {
+            correctSong: lobby.gameState.currentSong,
+            nextRound: lobby.gameState.currentRound,
+          });
         }
+      } else {
+        // Emit incorrect guess result
+        io.to(lobbyId).emit('guessResult', {
+          playerId: player.id,
+          playerName: player.name,
+          correct: false,
+          points: 0,
+          guess: songName
+        });
       }
     });
   });

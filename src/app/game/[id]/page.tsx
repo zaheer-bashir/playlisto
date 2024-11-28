@@ -316,7 +316,10 @@ export default function GamePage() {
     socket.emit("submitGuess", {
       lobbyId: gameId,
       songName,
+      snippetDuration,
     });
+    
+    setRemainingGuesses(prev => prev - 1);
   };
 
   const handlePlaybackComplete = () => {
