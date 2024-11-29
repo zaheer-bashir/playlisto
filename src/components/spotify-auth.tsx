@@ -49,6 +49,7 @@ export function SpotifyAuth({ onSuccess }: SpotifyAuthProps) {
     "streaming",
     "user-read-playback-state",
     "user-modify-playback-state",
+    "app-remote-control"
   ].join(" ");
 
   const handleLogin = () => {

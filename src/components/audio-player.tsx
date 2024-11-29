@@ -26,7 +26,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   spotifyToken,
   showControls = true,
 }) => {
-  
   const [isPlaying, setIsPlaying] = useState(false);
   const [player, setPlayer] = useState<Spotify.Player | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,7 +37,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   // Initialize Spotify SDK script
   useEffect(() => {
-    if (!showControls) return;
+    if (!showControls || !spotifyToken) return;
 
     // Check if script is already loaded
     if (!window.Spotify && !document.getElementById('spotify-player')) {
@@ -47,6 +46,14 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       script.id = 'spotify-player';
       script.src = "https://sdk.scdn.co/spotify-player.js";
       script.async = true;
+
+      // Add load error handling
+      script.onerror = () => {
+        console.error('🔴 Failed to load Spotify SDK script');
+        setError('Failed to load Spotify player');
+        setIsLoading(false);
+      };
+
       document.body.appendChild(script);
     }
 
@@ -54,33 +61,35 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     initializationTimeout.current = setTimeout(() => {
       if (!sdkReady.current) {
         console.error('🔴 Spotify SDK initialization timeout');
-        setError('Failed to initialize Spotify player');
+        setError('Failed to initialize Spotify player. Please refresh the page.');
         setIsLoading(false);
       }
-    }, 10000); // 10 second timeout
+    }, 15000); // Increased to 15 seconds
 
     return () => {
       if (initializationTimeout.current) {
         clearTimeout(initializationTimeout.current);
       }
     };
-  }, [showControls]);
+  }, [showControls, spotifyToken]);
 
   // Initialize Player when SDK is ready
   useEffect(() => {
     if (!showControls || !spotifyToken || sdkReady.current) return;
 
     const initializePlayer = () => {
-      console.log('🟡 Initializing Spotify player...');
+      console.log("🟡 Initializing Spotify player...");
       const player = new window.Spotify.Player({
-        name: 'Playlisto Game Player',
-        getOAuthToken: cb => { cb(spotifyToken); }
+        name: "Playlisto Game Player",
+        getOAuthToken: (cb) => {
+          cb(spotifyToken);
+        },
       });
 
-      player.addListener('ready', ({ device_id }) => {
-        console.log('🟢 Spotify Player Ready:', {
+      player.addListener("ready", ({ device_id }) => {
+        console.log("🟢 Spotify Player Ready:", {
           deviceId: device_id,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
         sdkReady.current = true;
         setDeviceId(device_id);
@@ -90,45 +99,44 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         }
       });
 
-      player.addListener('not_ready', ({ device_id }) => {
-        console.log('🔴 Device has gone offline:', device_id);
+      player.addListener("not_ready", ({ device_id }) => {
+        console.log("🔴 Device has gone offline:", device_id);
         setDeviceId(null);
       });
 
-      player.addListener('initialization_error', ({ message }) => {
-        console.error('🔴 Initialization error:', message);
+      player.addListener("initialization_error", ({ message }) => {
+        console.error("🔴 Initialization error:", message);
         setError(`Initialization failed: ${message}`);
         setIsLoading(false);
       });
 
-      player.addListener('authentication_error', ({ message }) => {
-        console.error('🔴 Authentication error:', message);
-        setError('Authentication failed');
+      player.addListener("authentication_error", ({ message }) => {
+        console.error("🔴 Authentication error:", message);
+        setError("Authentication failed");
         setIsLoading(false);
       });
 
-      player.addListener('account_error', ({ message }) => {
-        console.error('🔴 Account error:', message);
-        setError('Premium account required');
+      player.addListener("account_error", ({ message }) => {
+        console.error("🔴 Account error:", message);
+        setError("Premium account required");
         setIsLoading(false);
       });
 
-      player.addListener('player_state_changed', state => {
+      player.addListener("player_state_changed", (state) => {
         if (state) {
           setIsPlaying(!state.paused);
         }
       });
 
-      player.connect()
-        .then(success => {
-          if (success) {
-            console.log('🟢 Spotify player connected successfully');
-          } else {
-            console.error('🔴 Failed to connect Spotify player');
-            setError('Failed to connect player');
-            setIsLoading(false);
-          }
-        });
+      player.connect().then((success) => {
+        if (success) {
+          console.log("🟢 Spotify player connected successfully");
+        } else {
+          console.error("🔴 Failed to connect Spotify player");
+          setError("Failed to connect player");
+          setIsLoading(false);
+        }
+      });
 
       setPlayer(player);
     };
@@ -141,7 +149,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
     return () => {
       if (player) {
-        console.log('🟡 Disconnecting Spotify player...');
+        console.log("🟡 Disconnecting Spotify player...");
         player.disconnect();
       }
     };
@@ -164,30 +172,33 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       const startTime = Date.now();
 
       // Transfer playback to our device first
-      await fetch('https://api.spotify.com/v1/me/player', {
-        method: 'PUT',
+      await fetch("https://api.spotify.com/v1/me/player", {
+        method: "PUT",
         headers: {
-          'Authorization': `Bearer ${spotifyToken}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${spotifyToken}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           device_ids: [deviceId],
-          play: false
-        })
+          play: false,
+        }),
       });
 
       // Start playing from the beginning
-      const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${spotifyToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          uris: [`spotify:track:${songId}`],
-          position_ms: 0
-        })
-      });
+      const response = await fetch(
+        `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${spotifyToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uris: [`spotify:track:${songId}`],
+            position_ms: 0,
+          }),
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to play song: ${response.status}`);
@@ -197,15 +208,15 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
       // Calculate the actual delay in starting playback
       const actualDelay = Date.now() - startTime;
-      
+
       // Adjust the duration to compensate for the delay
       const adjustedDuration = duration + actualDelay;
 
-      console.log('🟡 Playback timing:', {
+      console.log("🟡 Playback timing:", {
         requestedDuration: duration,
         actualDelay,
         adjustedDuration,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       // Set timeout to stop playback after adjusted duration
@@ -213,14 +224,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         await player?.pause();
         setIsPlaying(false);
       }, adjustedDuration);
-
     } catch (error) {
-      console.error('🔴 Error playing song:', {
+      console.error("🔴 Error playing song:", {
         songId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
       });
-      setError('Failed to play song');
+      setError("Failed to play song");
     }
   };
 
@@ -260,9 +270,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           >
             <Play className="h-4 w-4" />
           </Button>
-          <Button 
-            size="icon" 
-            variant="outline" 
+          <Button
+            size="icon"
+            variant="outline"
             onClick={onExtendDuration}
             disabled={isPlaying}
           >

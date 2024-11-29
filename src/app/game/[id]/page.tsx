@@ -117,6 +117,13 @@ export default function GamePage() {
   // Add state for snippet duration
   const [snippetDuration, setSnippetDuration] = useState(500); // Start with 0.5 seconds
 
+  // Add new state for the current player's guess result
+  const [currentGuessResult, setCurrentGuessResult] = useState<{
+    correct: boolean;
+    points?: number;
+    message: string;
+  } | null>(null);
+
   useEffect(() => {
     console.log("gameState", gameState);
   }, [gameState]);
@@ -311,15 +318,39 @@ export default function GamePage() {
   }, [isLoading]);
 
   const handleGuess = (songName: string) => {
-    if (!socket || remainingGuesses <= 0 || !gameState.isPlaying) return;
+    if (!socket || remainingGuesses <= 0 || !gameState.isPlaying) {
+      console.log("🔴 Cannot submit guess:", {
+        hasSocket: !!socket,
+        remainingGuesses,
+        isPlaying: gameState.isPlaying,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    console.log("🟢 Submitting guess to server:", {
+      lobbyId: gameId,
+      songName,
+      snippetDuration,
+      socketId: socket.id,
+      timestamp: new Date().toISOString(),
+    });
 
     socket.emit("submitGuess", {
       lobbyId: gameId,
       songName,
       snippetDuration,
     });
-    
-    setRemainingGuesses(prev => prev - 1);
+
+    // Decrease remaining guesses
+    setRemainingGuesses((prev) => {
+      console.log("🟡 Updating remaining guesses:", {
+        previous: prev,
+        new: prev - 1,
+        timestamp: new Date().toISOString(),
+      });
+      return prev - 1;
+    });
   };
 
   const handlePlaybackComplete = () => {
@@ -329,7 +360,7 @@ export default function GamePage() {
   };
 
   const handleExtendDuration = () => {
-    setSnippetDuration(prev => prev + 500); // Increase by 0.5 seconds
+    setSnippetDuration((prev) => prev + 500); // Increase by 0.5 seconds
   };
 
   const handleSkipRound = () => {
@@ -558,6 +589,108 @@ export default function GamePage() {
     gameId,
   ]);
 
+  // Add this debug effect to track currentGuessResult changes
+  useEffect(() => {
+    console.log("🟡 Current guess result changed:", {
+      hasResult: !!currentGuessResult,
+      result: currentGuessResult,
+      timestamp: new Date().toISOString(),
+    });
+  }, [currentGuessResult]);
+
+  // Update the effect that handles guess results
+  useEffect(() => {
+    if (!socket) {
+      console.log("🔴 No socket available for guess results");
+      return;
+    }
+
+    const handleGuessResult = (result: any) => {
+      console.log("🟡 Received guess result:", {
+        result,
+        currentUserId: userId,
+        resultPlayerId: result.playerId,
+        isCurrentPlayer: result.playerId === userId,
+        socketId: socket.id,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Update guess results list
+      setGuessResults((prev) => {
+        const newResults = [result, ...prev].slice(0, 10);
+        console.log("🟢 Updated guess results:", {
+          previousCount: prev.length,
+          newCount: newResults.length,
+          latestResult: result,
+          timestamp: new Date().toISOString(),
+        });
+        return newResults;
+      });
+
+      // If this is the current player's guess, show feedback
+      if (result.playerId === userId) {
+        const feedbackMessage = {
+          correct: result.correct,
+          points: result.points,
+          message: result.correct
+            ? `Correct! +${result.points} points`
+            : "Incorrect, try again!",
+        };
+
+        console.log("🟢 Setting feedback for current player:", {
+          feedback: feedbackMessage,
+          timestamp: new Date().toISOString(),
+        });
+
+        setCurrentGuessResult(feedbackMessage);
+
+        // Update game state to reflect new score if guess was correct
+        if (result.correct) {
+          setGameState((prev) => {
+            const updatedState = {
+              ...prev,
+              players: prev.players.map((p) =>
+                p.id === userId
+                  ? { ...p, score: (p.score || 0) + (result.points || 0) }
+                  : p
+              ),
+            };
+            console.log("🟢 Updated game state after correct guess:", {
+              previousPlayers: prev.players,
+              updatedPlayers: updatedState.players,
+              userId,
+              points: result.points,
+              timestamp: new Date().toISOString(),
+            });
+            return updatedState;
+          });
+        }
+
+        // Clear feedback after 3 seconds
+        const timeoutId = setTimeout(() => {
+          console.log("🟢 Clearing guess feedback");
+          setCurrentGuessResult(null);
+        }, 3000);
+
+        return () => {
+          clearTimeout(timeoutId);
+        };
+      }
+    };
+
+    console.log("🟡 Setting up guess result listener:", {
+      socketId: socket.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    socket.on("guessResult", handleGuessResult);
+
+    return () => {
+      console.log("🟡 Cleaning up guess result listener");
+      socket.off("guessResult", handleGuessResult);
+    };
+  }, [socket, userId]);
+
   return (
     <main className="min-h-screen p-4 bg-gradient-to-b from-background to-muted">
       <div className="max-w-4xl mx-auto space-y-4">
@@ -624,7 +757,7 @@ export default function GamePage() {
                           />
                         </div>
                       )}
-                      
+
                       {/* Start Round button (only show when round is not active) */}
                       {!gameState.isPlaying && (
                         <Button
@@ -663,6 +796,28 @@ export default function GamePage() {
                               {remainingGuesses} guesses remaining
                             </Badge>
                           </div>
+
+                          {/* Guess Result Feedback */}
+                          {currentGuessResult && (
+                            <div
+                              className={cn(
+                                "p-3 rounded-md text-sm font-medium mb-3 animate-in fade-in slide-in-from-top-1",
+                                currentGuessResult.correct
+                                  ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-100"
+                                  : "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-100"
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{currentGuessResult.message}</span>
+                                {currentGuessResult.points && (
+                                  <span className="font-bold">
+                                    +{currentGuessResult.points} points
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
                           <SongSearch
                             spotifyToken={spotifyToken || ""}
                             onGuess={handleGuess}

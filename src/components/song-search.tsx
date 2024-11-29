@@ -82,6 +82,11 @@ export function SongSearch({ spotifyToken, onGuess, disabled }: SongSearchProps)
   }, [debouncedSearchTerm, spotifyToken]);
 
   const handleSubmitGuess = (songName: string) => {
+    console.log('🟡 Submitting guess:', {
+      songName,
+      timestamp: new Date().toISOString()
+    });
+
     onGuess(songName);
     setSearchTerm('');
     setResults([]);
