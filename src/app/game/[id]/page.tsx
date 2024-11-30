@@ -692,40 +692,36 @@ export default function GamePage() {
   }, [socket, userId]);
 
   return (
-    <main className="min-h-screen p-4 bg-gradient-to-b from-background to-muted">
-      <div className="max-w-4xl mx-auto space-y-4">
+    <main className="min-h-screen bg-[#1E1F2A] bg-[url('/notes-pattern.png')] bg-repeat bg-opacity-5">
+      <div className="max-w-4xl mx-auto p-4 space-y-4">
         {isLoading ? (
-          <Card>
+          <Card className="shadow-2xl border-none">
             <CardContent className="p-8">
               <div className="flex items-center justify-center gap-2">
-                <Loader2 className="h-8 w-8 animate-spin" />
-                <span>Loading game...</span>
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="text-lg">Loading game...</span>
               </div>
             </CardContent>
           </Card>
         ) : (
           <>
-            {errorMessage && (
-              <div className="p-4 bg-destructive/10 text-destructive rounded-lg">
-                {errorMessage}
-              </div>
-            )}
-
-            <Card>
-              <CardHeader>
+            <Card className="shadow-2xl border-none">
+              <CardHeader className="border-b border-border/10">
                 <div className="flex justify-between items-center">
-                  <CardTitle className="flex items-center gap-2">
-                    <Music2 className="h-6 w-6" />
+                  <CardTitle className="flex items-center gap-3 text-2xl">
+                    <Music2 className="h-7 w-7 text-primary" />
                     Round {gameState.currentRound} of {gameState.totalRounds}
                   </CardTitle>
-                  <span className="text-sm font-medium">{gameStatus}</span>
+                  <span className="text-sm font-medium px-4 py-1.5 rounded-full bg-secondary/50">
+                    {gameStatus}
+                  </span>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="p-6 space-y-8">
                 {/* Game Progress */}
-                <div className="w-full bg-muted rounded-full h-2.5">
+                <div className="w-full bg-secondary/50 rounded-full h-2">
                   <div
-                    className="bg-primary h-2.5 rounded-full transition-all duration-300"
+                    className="bg-primary h-2 rounded-full transition-all duration-500"
                     style={{
                       width: `${
                         (gameState.currentRound / gameState.totalRounds) * 100
@@ -736,9 +732,9 @@ export default function GamePage() {
 
                 {/* Host Controls */}
                 {isHost && gameState.currentRound > 0 && (
-                  <div className="p-4 bg-muted rounded-lg space-y-4">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <Crown className="h-4 w-4" />
+                  <div className="p-6 bg-secondary/30 rounded-xl space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2 text-lg">
+                      <Crown className="h-5 w-5 text-primary" />
                       Host Controls
                     </h3>
                     <div className="flex flex-col gap-4">
@@ -761,13 +757,12 @@ export default function GamePage() {
                       {/* Start Round button (only show when round is not active) */}
                       {!gameState.isPlaying && (
                         <Button
-                          className="w-full"
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground"
                           onClick={handleStartRound}
                           disabled={!availableSongs.length}
                         >
                           <Play className="h-4 w-4 mr-2" />
-                          Start Next Round{" "}
-                          {!availableSongs.length && "(No songs available)"}
+                          Start Next Round
                         </Button>
                       )}
                     </div>
@@ -775,14 +770,14 @@ export default function GamePage() {
                 )}
 
                 {/* Game Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Left Column - Game Play */}
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {/* */}
 
                     {/* Guessing Section */}
                     {gameState.isPlaying && (
-                      <div className="p-4 bg-muted rounded-lg">
+                      <div className="p-6 bg-secondary/30 rounded-xl">
                         <div className="space-y-2">
                           <div className="flex justify-between items-center">
                             <h3 className="font-semibold">Make Your Guess</h3>
@@ -829,11 +824,11 @@ export default function GamePage() {
                   </div>
 
                   {/* Right Column - Game Info */}
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {/* Recent Guesses */}
-                    <div className="p-4 bg-muted rounded-lg space-y-2">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4" />
+                    <div className="p-6 bg-secondary/30 rounded-xl">
+                      <h3 className="font-semibold flex items-center gap-2 text-lg mb-4">
+                        <MessageSquare className="h-5 w-5 text-primary" />
                         Recent Guesses
                       </h3>
                       <div className="space-y-2 max-h-[200px] overflow-y-auto">
@@ -858,22 +853,22 @@ export default function GamePage() {
                     </div>
 
                     {/* Scoreboard */}
-                    <div className="p-4 bg-muted rounded-lg space-y-2">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <Trophy className="h-4 w-4" />
+                    <div className="p-6 bg-secondary/30 rounded-xl">
+                      <h3 className="font-semibold flex items-center gap-2 text-lg mb-4">
+                        <Trophy className="h-5 w-5 text-primary" />
                         Scoreboard
                       </h3>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         {gameState.players
                           .sort((a, b) => (b.score || 0) - (a.score || 0))
                           .map((player, index) => (
                             <div
                               key={player.id}
-                              className="flex items-center justify-between p-2 rounded-lg bg-background"
+                              className="flex items-center justify-between p-3 rounded-lg bg-background/50 hover:bg-background/70 transition-colors"
                             >
                               <div className="flex items-center gap-2">
                                 {index === 0 && (
-                                  <Crown className="h-4 w-4 text-yellow-500" />
+                                  <Crown className="h-4 w-4 text-primary" />
                                 )}
                                 <span>{player.name}</span>
                                 {player.isHost && (

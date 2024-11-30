@@ -1,0 +1,119 @@
+Song Guess Flow in Playlisto
+===========================
+
+1. User Selects a Song (Frontend: src/components/song-search.tsx)
+---------------------------------------------------------------
+- User types in search box, triggering Spotify API search with debounced input
+- Search results display in dropdown
+- User clicks a song from results, triggering handleSubmitGuess(songName)
+- handleSubmitGuess:
+  * Logs the guess attempt
+  * Calls the onGuess callback with selected songName
+  * Clears search input and results
+  * Closes dropdown
+
+2. Game Page Handles Guess (Frontend: src/app/game/[id]/page.tsx)
+---------------------------------------------------------------
+- SongSearch component's onGuess callback triggers handleGuess function
+- handleGuess function:
+  * Validates:
+    - Socket exists
+    - Player has remaining guesses
+    - Game is currently playing
+  * Logs guess submission details
+  * Emits "submitGuess" socket event with:
+    - lobbyId: current game ID
+    - songName: selected song name
+    - snippetDuration: current snippet duration
+  * Decrements remainingGuesses counter locally
+
+3. Server Processes Guess (Backend: src/server/socket.js)
+------------------------------------------------------
+- Receives "submitGuess" event
+- Validates:
+  * Lobby exists
+  * Game state exists
+  * Player exists in lobby
+- Normalizes both:
+  * Submitted song name
+  * Actual current song name
+- Compares normalized strings for match
+- Creates guessResult object:
+  * playerId: player's ID
+  * playerName: player's name
+  * correct: boolean match result
+  * points: calculated if correct
+  * guess: original guess text
+  * timestamp: current time
+
+4. Points Calculation (Backend)
+-----------------------------
+If guess is correct:
+- Calculates points based on:
+  * Base points (1000)
+  * Deduction based on snippet duration
+  * Minimum 100 points
+- Updates player's score in:
+  * Player object
+  * Game state
+- Marks player as having guessed correctly
+
+5. Server Broadcasts Updates (Backend)
+-----------------------------------
+- Emits "guessResult" event to all players in lobby with guess result
+- Emits updated "gameState" to all players with:
+  * Current game state
+  * Updated player scores
+  * Current song info
+  * Playlist info
+  * Host info
+
+6. Round Completion Check (Backend)
+--------------------------------
+If guess was correct:
+- Checks if all players have guessed correctly
+- If yes:
+  * Marks round as complete
+  * Increments round counter
+  * Resets player guess flags
+  * Emits "roundEnd" event with:
+    - Correct song info
+    - Next round number
+  * Emits final gameState update
+
+7. Frontend Handles Results (Frontend: src/app/game/[id]/page.tsx)
+---------------------------------------------------------------
+Multiple socket event listeners process the updates:
+- "guessResult" listener:
+  * Updates guessResults list
+  * Shows feedback if current player's guess
+  * Updates player scores
+  * Shows temporary feedback message
+- "gameState" listener:
+  * Updates overall game state
+  * Refreshes UI with new scores
+  * Updates round information
+- "roundEnd" listener (if round ends):
+  * Resets game state for next round
+  * Updates round counter
+  * Clears current song
+
+Data Flow Summary
+----------------
+Frontend → Backend:
+- Socket event: "submitGuess"
+- Data: lobbyId, songName, snippetDuration
+
+Backend → Frontend:
+- Socket event: "guessResult"
+- Data: playerId, playerName, correct, points, guess
+- Socket event: "gameState"
+- Data: complete game state with updated scores
+- Socket event: "roundEnd" (if applicable)
+- Data: correctSong, nextRound
+
+The flow maintains real-time synchronization across all players while handling:
+- Score tracking
+- Round progression
+- Player feedback
+- Game state management 
