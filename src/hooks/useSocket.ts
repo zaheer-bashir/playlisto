@@ -2,71 +2,54 @@ import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useUserId } from './useUserId';
 
-interface SocketState {
-  socket: Socket | null;
-  isConnected: boolean;
-}
-
-export function useSocket(url: string): { socket: Socket | null; isConnected: boolean } {
-  const [socketState, setSocketState] = useState<SocketState>({ socket: null, isConnected: false });
+export function useSocket(url: string) {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const userId = useUserId();
 
   useEffect(() => {
-    if (!userId) {
-      console.log('🔴 No userId available for socket connection');
-      return;
-    }
-
-    console.log('🟡 Initializing socket connection:', {
-      userId,
+    console.log("🟡 Initializing socket connection:", {
       url,
-      timestamp: new Date().toISOString()
+      userId,
+      timestamp: new Date().toISOString(),
     });
 
-    const socketInstance = io(url, {
+    // Create socket with auth
+    const newSocket = io(url, {
       auth: { userId },
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      forceNew: false,
-      multiplex: true
     });
 
-    socketInstance.on('connect_error', (error) => {
-      console.error('🔴 Socket connection error:', {
-        error: error.message,
+    newSocket.on("connect", () => {
+      console.log("🟢 Socket connected:", {
+        socketId: newSocket.id,
         userId,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
+      setIsConnected(true);
     });
 
-    socketInstance.on('connect', () => {
-      console.log('🟢 Socket connected:', {
-        socketId: socketInstance.id,
+    newSocket.on("disconnect", () => {
+      console.log("🔴 Socket disconnected:", {
+        socketId: newSocket.id,
         userId,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
-      setSocketState({ socket: socketInstance, isConnected: true });
+      setIsConnected(false);
     });
 
-    socketInstance.on('disconnect', (reason) => {
-      console.log('🔴 Socket disconnected:', {
-        reason,
-        userId,
-        timestamp: new Date().toISOString()
-      });
-      setSocketState(prev => ({ ...prev, isConnected: false }));
-    });
+    setSocket(newSocket);
 
     return () => {
-      console.log('🟡 Cleaning up socket connection:', {
-        socketId: socketInstance.id,
-        userId,
-        timestamp: new Date().toISOString()
+      console.log("🟡 Cleaning up socket connection:", {
+        socketId: newSocket.id,
+        timestamp: new Date().toISOString(),
       });
-      socketInstance.close();
+      newSocket.disconnect();
     };
   }, [url, userId]);
 
-  return socketState;
+  return { socket, isConnected };
 } 

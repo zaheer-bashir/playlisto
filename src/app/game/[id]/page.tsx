@@ -27,6 +27,7 @@ interface Player {
   name: string;
   score: number;
   isHost: boolean;
+  hasGuessedCorrectly?: boolean;
 }
 
 interface GameState {
@@ -484,7 +485,13 @@ export default function GamePage() {
 
     // Handle round end
     socket.on("roundEnd", ({ correctSong, nextRound }) => {
-      console.log("🟡 Round ended:", {
+      // Reset remaining guesses for next round
+      setRemainingGuesses(3);
+
+      // Clear current guess result if any
+      setCurrentGuessResult(null);
+
+      console.log("🟢 Round ended:", {
         correctSong,
         nextRound,
         timestamp: new Date().toISOString(),
@@ -605,91 +612,115 @@ export default function GamePage() {
       return;
     }
 
+    console.log("🔍 Setting up guessResult listener:", {
+      socketId: socket.id,
+      userId,
+      isConnected: socket.connected,
+      hasGameState: !!gameState,
+      timestamp: new Date().toISOString(),
+    });
+
     const handleGuessResult = (result: any) => {
-      console.log("🟡 Received guess result:", {
+      console.log("🟡 GuessResult Handler Details:", {
         result,
         currentUserId: userId,
         resultPlayerId: result.playerId,
         isCurrentPlayer: result.playerId === userId,
         socketId: socket.id,
+        hasGameState: !!gameState,
+        currentPlayers: gameState?.players?.map(p => ({ id: p.id, name: p.name })),
         timestamp: new Date().toISOString(),
       });
 
-      // Update guess results list
+      // Update guess results for ALL players
       setGuessResults((prev) => {
-        const newResults = [result, ...prev].slice(0, 10);
-        console.log("🟢 Updated guess results:", {
-          previousCount: prev.length,
-          newCount: newResults.length,
-          latestResult: result,
+        console.log("🔍 Updating Guess Results:", {
+          previousResults: prev,
+          newResult: result,
           timestamp: new Date().toISOString(),
         });
+        const newResults = [result, ...prev].slice(0, 10);
         return newResults;
       });
 
-      // If this is the current player's guess, show feedback
-      if (result.playerId === userId) {
-        const feedbackMessage = {
-          correct: result.correct,
-          points: result.points,
-          message: result.correct
-            ? `Correct! +${result.points} points`
-            : "Incorrect, try again!",
-        };
-
-        console.log("🟢 Setting feedback for current player:", {
-          feedback: feedbackMessage,
+      // Update game state for ALL players if the guess was correct
+      if (result.correct) {
+        console.log("🔍 Updating Game State for Correct Guess:", {
+          resultPlayerId: result.playerId,
+          currentGameState: gameState,
           timestamp: new Date().toISOString(),
         });
-
-        setCurrentGuessResult(feedbackMessage);
-
-        // Update game state to reflect new score if guess was correct
-        if (result.correct) {
-          setGameState((prev) => {
-            const updatedState = {
-              ...prev,
-              players: prev.players.map((p) =>
-                p.id === userId
-                  ? { ...p, score: (p.score || 0) + (result.points || 0) }
-                  : p
-              ),
-            };
-            console.log("🟢 Updated game state after correct guess:", {
-              previousPlayers: prev.players,
-              updatedPlayers: updatedState.players,
-              userId,
-              points: result.points,
-              timestamp: new Date().toISOString(),
-            });
-            return updatedState;
-          });
-        }
-
-        // Clear feedback after 3 seconds
-        const timeoutId = setTimeout(() => {
-          console.log("🟢 Clearing guess feedback");
-          setCurrentGuessResult(null);
-        }, 3000);
-
-        return () => {
-          clearTimeout(timeoutId);
-        };
+        
+        setGameState((prev) => {
+          const updatedState = {
+            ...prev,
+            players: prev.players.map((p) =>
+              p.id === result.playerId
+                ? { ...p, score: (p.score || 0) + (result.points || 0), hasGuessedCorrectly: true }
+                : p
+            ),
+          };
+          return updatedState;
+        });
       }
     };
-
-    console.log("🟡 Setting up guess result listener:", {
-      socketId: socket.id,
-      timestamp: new Date().toISOString(),
-    });
 
     socket.on("guessResult", handleGuessResult);
 
     return () => {
-      console.log("🟡 Cleaning up guess result listener");
       socket.off("guessResult", handleGuessResult);
     };
-  }, [socket, userId]);
+  }, [socket, userId, gameState]);
+
+  // Add a separate effect to handle game state updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleGameStateUpdate = (newGameState: GameState) => {
+      console.log("🟢 Received game state update:", {
+        currentRound: newGameState.currentRound,
+        isPlaying: newGameState.isPlaying,
+        playerCount: newGameState.players?.length,
+        players: newGameState.players?.map((p) => ({
+          id: p.id,
+          name: p.name,
+          score: p.score,
+          hasGuessedCorrectly: p.hasGuessedCorrectly,
+        })),
+        timestamp: new Date().toISOString(),
+      });
+
+      // Always update the game state when received from server
+      setGameState(newGameState);
+
+      // Update remaining guesses if round is not playing
+      if (!newGameState.isPlaying) {
+        setRemainingGuesses(3);
+        setCurrentGuessResult(null);
+      }
+    };
+
+    socket.on("gameState", handleGameStateUpdate);
+
+    return () => {
+      socket.off("gameState", handleGameStateUpdate);
+    };
+  }, [socket]);
+
+  // Add a reconnection effect
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    console.log("🟢 Socket reconnected, requesting game state:", {
+      socketId: socket.id,
+      gameId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Re-join the game room
+    socket.emit("requestGameState", { gameId, userId });
+  }, [isConnected, socket]);
 
   return (
     <main className="min-h-screen bg-[#1E1F2A] bg-[url('/notes-pattern.png')] bg-repeat bg-opacity-5">

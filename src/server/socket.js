@@ -379,10 +379,7 @@ function initializeSocketServer(server) {
       });
     });
     // Add handler for game state requests
-    socket.on("requestGameState", function (_a) {
-      var gameId = _a.gameId,
-        userId = _a.userId;
-
+    socket.on("requestGameState", function ({ gameId, userId }) {
       console.log("🟡 Game state requested:", {
         gameId,
         userId,
@@ -390,27 +387,36 @@ function initializeSocketServer(server) {
         timestamp: new Date().toISOString(),
       });
 
-      var lobby = lobbies.get(gameId);
+      const lobby = lobbies.get(gameId);
       if (!lobby?.gameState) {
         console.log("🔴 No game state found:", { gameId });
         return;
       }
 
-      // Send complete game state including playlist and current song
+      // Update the socket ID for the player
+      const player = lobby.players.find(p => p.userId === userId);
+      if (player) {
+        player.id = socket.id;
+        lobbies.set(gameId, lobby);
+        
+        // Ensure all players are in the room
+        ensurePlayersInRoom(io, lobby);
+        
+        console.log("🟢 Updated player socket ID:", {
+          userId,
+          oldSocketId: player.id,
+          newSocketId: socket.id,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Send complete game state
       socket.emit("gameState", {
         ...lobby.gameState,
         hostId: lobby.hostId,
         spotifyToken: lobby.spotifyToken,
         playlist: lobby.gameState.playlist,
         currentSong: lobby.gameState.currentSong,
-      });
-
-      console.log("🟢 Sent game state:", {
-        gameId,
-        hasPlaylist: !!lobby.gameState.playlist,
-        hasSong: !!lobby.gameState.currentSong,
-        songId: lobby.gameState.currentSong?.id,
-        timestamp: new Date().toISOString(),
       });
     });
     // Update the startRound handler
@@ -532,7 +538,7 @@ function initializeSocketServer(server) {
     });
     // Update the submitGuess handler
     socket.on("submitGuess", ({ lobbyId, songName, snippetDuration }) => {
-      console.log("🟡 Received guess submission:", {
+      console.log("🟡 Guess Submission Details:", {
         lobbyId,
         songName,
         snippetDuration,
@@ -542,6 +548,20 @@ function initializeSocketServer(server) {
       });
 
       const lobby = lobbies.get(lobbyId);
+      
+      console.log("🔍 Current Lobby State:", {
+        hasLobby: !!lobby,
+        hasGameState: !!lobby?.gameState,
+        playerCount: lobby?.players.length,
+        players: lobby?.players.map(p => ({
+          id: p.id,
+          userId: p.userId,
+          name: p.name,
+          hasGuessedCorrectly: p.hasGuessedCorrectly
+        })),
+        timestamp: new Date().toISOString(),
+      });
+
       if (!lobby || !lobby.gameState) {
         console.log("🔴 Invalid guess submission - no lobby or game state");
         return;
@@ -580,7 +600,7 @@ function initializeSocketServer(server) {
         playerName: player.name,
         correct: isCorrect,
         points: 0,
-        guess: songName, // Changed from isCorrect ? "Correct!" : "Incorrect" to show actual guess
+        guess: songName,
         timestamp: Date.now(),
       };
 
@@ -593,25 +613,17 @@ function initializeSocketServer(server) {
         player.score = (player.score || 0) + points;
         player.hasGuessedCorrectly = true;
         guessResult.points = points;
-
-        // Update the player's score in the gameState as well
-        lobby.gameState.players = lobby.players.map((p) => ({
-          id: p.id,
-          userId: p.userId,
-          name: p.name,
-          score: p.score || 0,
-          isHost: p.isHost,
-          hasGuessedCorrectly: p.hasGuessedCorrectly,
-        }));
       }
 
-      // Save the updated lobby state
-      lobbies.set(lobbyId, lobby);
+      // Ensure all players are in the room
+      lobby.players.forEach(player => {
+        const playerSocket = io.sockets.sockets.get(player.id);
+        if (playerSocket) {
+          playerSocket.join(lobbyId);
+        }
+      });
 
-      // Broadcast the guess result to all players in the lobby immediately
-      io.to(lobbyId).emit("guessResult", guessResult);
-
-      // Create a complete game state update
+      // Create updated game state
       const updatedGameState = {
         ...lobby.gameState,
         currentSong: lobby.gameState.currentSong,
@@ -628,17 +640,20 @@ function initializeSocketServer(server) {
         })),
       };
 
-      // Broadcast complete game state to all players
-      io.to(lobbyId).emit("gameState", updatedGameState);
-
-      console.log("🟢 Broadcasting game update:", {
+      // Log room members before broadcasting
+      const roomMembers = Array.from(io.sockets.adapter.rooms.get(lobbyId) || []);
+      console.log("🔍 Room members before broadcast:", {
         lobbyId,
-        playerCount: lobby.players.length,
-        guessResult,
+        members: roomMembers,
+        playerIds: lobby.players.map(p => p.id),
         timestamp: new Date().toISOString(),
       });
 
-      // Check for round completion after broadcasting updates
+      // Broadcast events to all players
+      io.to(lobbyId).emit("guessResult", guessResult);
+      io.to(lobbyId).emit("gameState", updatedGameState);
+
+      // Check for round completion
       if (isCorrect) {
         const allGuessedCorrectly = lobby.players.every(
           (p) => p.hasGuessedCorrectly
@@ -680,4 +695,24 @@ function initializeSocketServer(server) {
     });
   });
   return io;
+}
+
+// Add this function to help manage room membership
+function ensurePlayersInRoom(io, lobby) {
+  console.log("🔍 Ensuring players are in room:", {
+    lobbyId: lobby.id,
+    players: lobby.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      socketId: io.sockets.sockets.get(p.id)?.id
+    })),
+    timestamp: new Date().toISOString(),
+  });
+
+  lobby.players.forEach(player => {
+    const playerSocket = io.sockets.sockets.get(player.id);
+    if (playerSocket) {
+      playerSocket.join(lobby.id);
+    }
+  });
 }
