@@ -24,6 +24,7 @@ import { useUserId } from "@/hooks/useUserId";
 
 interface Player {
   id: string;
+  userId?: string;
   name: string;
   score: number;
   isHost: boolean;
@@ -41,6 +42,7 @@ interface GameState {
     startTime: number;
     previewUrl?: string;
   };
+  snippetDuration: number;
   isPlaying: boolean;
   hostId?: string;
   spotifyToken?: string;
@@ -96,6 +98,7 @@ export default function GamePage() {
     totalRounds: 10,
     players: [],
     isPlaying: false,
+    snippetDuration: 500
   });
   const [guess, setGuess] = useState("");
   const [remainingGuesses, setRemainingGuesses] = useState(3);
@@ -116,7 +119,20 @@ export default function GamePage() {
   const [isHost, setIsHost] = useState<boolean>(false);
 
   // Add state for snippet duration
-  const [snippetDuration, setSnippetDuration] = useState(500); // Start with 0.5 seconds
+  const [snippetDuration, setSnippetDuration] = useState(500); // Default 500ms
+
+  // Reset snippet duration when round changes
+  useEffect(() => {
+    if (!gameState.isPlaying) {
+      setSnippetDuration(500); // Reset to default duration
+      setRemainingGuesses(3); // Reset guesses
+      console.log("🟢 Reset round state:", {
+        snippetDuration: 500,
+        remainingGuesses: 3,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }, [gameState.isPlaying]);
 
   // Add new state for the current player's guess result
   const [currentGuessResult, setCurrentGuessResult] = useState<{
@@ -329,6 +345,13 @@ export default function GamePage() {
       return;
     }
 
+    // Check if player has already guessed correctly
+    const currentPlayer = gameState.players.find(p => p.userId === userId);
+    if (currentPlayer?.hasGuessedCorrectly) {
+      console.log("🔴 Player has already guessed correctly");
+      return;
+    }
+
     console.log("🟢 Submitting guess to server:", {
       lobbyId: gameId,
       songName,
@@ -337,11 +360,7 @@ export default function GamePage() {
       timestamp: new Date().toISOString(),
     });
 
-    socket.emit("submitGuess", {
-      lobbyId: gameId,
-      songName,
-      snippetDuration,
-    });
+    socket.emit("submitGuess", { lobbyId: gameId, songName, snippetDuration });
 
     // Decrease remaining guesses
     setRemainingGuesses((prev) => {
@@ -360,8 +379,21 @@ export default function GamePage() {
     }
   };
 
-  const handleExtendDuration = () => {
-    setSnippetDuration((prev) => prev + 500); // Increase by 0.5 seconds
+  const handleExtendDuration = (additionalTime: number) => {
+    if (!socket || !isHost) return;
+
+    const newDuration = (gameState.snippetDuration || 500) + additionalTime;
+    console.log("🟡 Extending duration:", {
+      currentDuration: gameState.snippetDuration,
+      additionalTime,
+      newDuration,
+      timestamp: new Date().toISOString(),
+    });
+
+    socket.emit("extendDuration", { 
+      lobbyId: gameId, 
+      newDuration 
+    });
   };
 
   const handleSkipRound = () => {
@@ -722,6 +754,43 @@ export default function GamePage() {
     socket.emit("requestGameState", { gameId, userId });
   }, [isConnected, socket]);
 
+  // Add snippetDuration to the state updates when receiving game state
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("gameState", (newState) => {
+      setGameState(newState);
+      // Update local snippet duration when game state changes
+      setSnippetDuration(newState.snippetDuration || 500);
+    });
+
+    // Update round end handler to reset duration
+    socket.on("roundEnd", ({ correctSong, nextRound }) => {
+      setRemainingGuesses(3);
+      setCurrentGuessResult(null);
+      setSnippetDuration(500); // Reset to default duration
+
+      console.log("🟢 Round ended:", {
+        correctSong,
+        nextRound,
+        timestamp: new Date().toISOString(),
+      });
+
+      setGameState((prev) => ({
+        ...prev,
+        isPlaying: false,
+        currentSong: undefined,
+        currentRound: nextRound,
+        snippetDuration: 500, // Ensure game state also resets duration
+      }));
+    });
+
+    return () => {
+      socket.off("gameState");
+      socket.off("roundEnd");
+    };
+  }, [socket]);
+
   return (
     <main className="min-h-screen bg-[#1E1F2A] bg-[url('/notes-pattern.png')] bg-repeat bg-opacity-5">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
@@ -848,6 +917,7 @@ export default function GamePage() {
                             spotifyToken={spotifyToken || ""}
                             onGuess={handleGuess}
                             disabled={remainingGuesses <= 0}
+                            hasGuessedCorrectly={gameState.players.find(p => p.userId === userId)?.hasGuessedCorrectly}
                           />
                         </div>
                       </div>

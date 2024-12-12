@@ -209,7 +209,7 @@ export default function LobbyPage() {
 
       const data = await response.json();
 
-      const formattedPlaylists: Playlist[] = data.items
+      const formattedPlaylists: Playlist[] = data.items 
         .filter((item: any) => item && item.tracks)
         .map((item: any) => ({
           id: item.id,

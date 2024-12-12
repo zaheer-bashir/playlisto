@@ -15,11 +15,12 @@ interface Song {
 
 interface SongSearchProps {
   spotifyToken: string;
-  onGuess: (guess: string) => void;
+  onGuess: (songName: string) => void;
   disabled?: boolean;
+  hasGuessedCorrectly?: boolean;
 }
 
-export function SongSearch({ spotifyToken, onGuess, disabled }: SongSearchProps) {
+export function SongSearch({ spotifyToken, onGuess, disabled, hasGuessedCorrectly }: SongSearchProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -112,7 +113,7 @@ export function SongSearch({ spotifyToken, onGuess, disabled }: SongSearchProps)
               setShowResults(true);
             }}
             onFocus={() => setShowResults(true)}
-            disabled={disabled}
+            disabled={disabled || hasGuessedCorrectly}
             className="pr-10"
           />
           {isLoading && (
@@ -143,7 +144,7 @@ export function SongSearch({ spotifyToken, onGuess, disabled }: SongSearchProps)
                   <button
                     onClick={() => handleSubmitGuess(song.name)}
                     className="w-full px-4 py-2 text-left hover:bg-muted flex items-start gap-3 transition-colors"
-                    disabled={disabled}
+                    disabled={disabled || hasGuessedCorrectly}
                   >
                     <Music className="h-4 w-4 mt-1 flex-shrink-0" />
                     <div className="min-w-0 flex-1">

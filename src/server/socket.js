@@ -6,6 +6,15 @@ var lobbies = new Map();
 var socketToLobbyMap = new Map();
 var userSocketMap = new Map();
 var gameUsedSongs = new Map();
+
+function normalizeString(str) {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+    .replace(/[^a-z0-9]/g, ''); // Remove non-alphanumeric characters
+}
+
 function initializeSocketServer(server) {
   var io = new socket_io_1.Server(server, {
     cors: {
@@ -422,7 +431,7 @@ function initializeSocketServer(server) {
     // Update the startRound handler
     socket.on("startRound", async ({ lobbyId }) => {
       const lobby = lobbies.get(lobbyId);
-      if (!lobby) return;
+      if (!lobby || socket.handshake.auth.userId !== lobby.hostId) return;
 
       try {
         // Get a random song that hasn't been used
@@ -497,39 +506,64 @@ function initializeSocketServer(server) {
       }
     });
 
-    // Add handler for round end
-    socket.on("endRound", function ({ lobbyId }) {
-      const lobby = lobbies.get(lobbyId);
-      if (!lobby || !lobby.gameState) return;
-
-      console.log("🟡 Ending round:", {
-        lobbyId,
-        round: lobby.gameState.currentRound,
+    // Add this function to handle round end logic
+    function handleRoundEnd(io, lobby) {
+      console.log("🟢 Handling round end:", {
+        lobbyId: lobby.id,
+        currentRound: lobby.gameState.currentRound,
         timestamp: new Date().toISOString(),
       });
 
-      // Update game state while preserving scores
+      // Update game state
       lobby.gameState = {
         ...lobby.gameState,
         isPlaying: false,
         currentSong: undefined,
+        snippetDuration: 500, // Reset duration to default
         currentRound: (lobby.gameState.currentRound || 1) + 1,
-        // Preserve player scores
-        players: lobby.players.map((player) => ({
-          ...player,
-          hasGuessedCorrectly: false, // Reset only the round-specific state
-        })),
       };
 
-      // Save updated state
-      lobbies.set(lobbyId, lobby);
+      // Reset player states for next round
+      lobby.players.forEach((p) => {
+        p.hasGuessedCorrectly = false;
+      });
 
-      // Emit updated game state
-      io.to(lobbyId).emit("gameState", lobby.gameState);
-      io.to(lobbyId).emit("roundEnd", {
-        correctSong: lobby.gameState.correctSong,
+      // Save updated state
+      lobbies.set(lobby.id, lobby);
+
+      // Emit round end
+      io.to(lobby.id).emit("roundEnd", {
+        correctSong: lobby.gameState.currentSong,
         nextRound: lobby.gameState.currentRound,
       });
+
+      // Emit final game state for the round
+      io.to(lobby.id).emit("gameState", {
+        ...lobby.gameState,
+        players: lobby.players.map((p) => ({
+          id: p.id,
+          userId: p.userId,
+          name: p.name,
+          score: p.score || 0,
+          isHost: p.isHost,
+          hasGuessedCorrectly: false,
+        })),
+        hostId: lobby.hostId,
+      });
+    }
+
+    // Add handler for round end
+    socket.on("endRound", function ({ lobbyId }) {
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby || !lobby.gameState || socket.handshake.auth.userId !== lobby.hostId) return;
+
+      console.log("🟢 Host ended round:", {
+        lobbyId,
+        currentRound: lobby.gameState.currentRound,
+        timestamp: new Date().toISOString(),
+      });
+
+      handleRoundEnd(io, lobby);
     });
     // Add cleanup for gameUsedSongs when game ends
     socket.on("endGame", function (_a) {
@@ -537,83 +571,46 @@ function initializeSocketServer(server) {
       gameUsedSongs.delete(lobbyId);
     });
     // Update the submitGuess handler
-    socket.on("submitGuess", ({ lobbyId, songName, snippetDuration }) => {
-      console.log("🟡 Guess Submission Details:", {
-        lobbyId,
-        songName,
-        snippetDuration,
-        socketId: socket.id,
-        userId: socket.handshake.auth.userId,
-        timestamp: new Date().toISOString(),
-      });
-
+    socket.on("submitGuess", ({ lobbyId, songName }) => {
       const lobby = lobbies.get(lobbyId);
-      
-      console.log("🔍 Current Lobby State:", {
-        hasLobby: !!lobby,
-        hasGameState: !!lobby?.gameState,
-        playerCount: lobby?.players.length,
-        players: lobby?.players.map(p => ({
-          id: p.id,
-          userId: p.userId,
-          name: p.name,
-          hasGuessedCorrectly: p.hasGuessedCorrectly
-        })),
-        timestamp: new Date().toISOString(),
-      });
+      if (!lobby?.gameState) return;
 
-      if (!lobby || !lobby.gameState) {
-        console.log("🔴 Invalid guess submission - no lobby or game state");
-        return;
-      }
-
-      // Find player by userId
       const player = lobby.players.find(
         (p) => p.userId === socket.handshake.auth.userId
       );
-      if (!player) {
-        console.log("🔴 Invalid guess submission - player not found");
-        return;
+      if (!player || player.hasGuessedCorrectly) return;
+
+      const isCorrect = normalizeString(songName) === normalizeString(lobby.gameState.currentSong.name);
+      
+      // Calculate points based on the current game state duration
+      let points = 0;
+      if (isCorrect) {
+        const currentDuration = lobby.gameState.snippetDuration || 500;
+        // Base points calculation using game state duration
+        const basePoints = 1000;
+        const durationPenalty = Math.floor((currentDuration - 500) / 500) * 100;
+        points = Math.max(100, basePoints - durationPenalty);
+        
+        player.hasGuessedCorrectly = true;
+        player.score = (player.score || 0) + points;
+
+        console.log("🟢 Correct guess points calculation:", {
+          basePoints,
+          currentDuration,
+          durationPenalty,
+          finalPoints: points,
+          timestamp: new Date().toISOString(),
+        });
       }
 
-      // Make sure player is in the room
-      socket.join(lobbyId);
-
-      const normalizeString = (str) => {
-        return str
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-z0-9\s]/g, "")
-          .trim();
-      };
-
-      const normalizedGuess = normalizeString(songName);
-      const normalizedActual = normalizeString(
-        lobby.gameState.currentSong?.name || ""
-      );
-      const isCorrect = normalizedGuess === normalizedActual;
-
-      // Create guess result
       const guessResult = {
         playerId: player.userId,
         playerName: player.name,
         correct: isCorrect,
-        points: 0,
-        guess: songName,
+        points: points,
+        guess: isCorrect ? "Correct!" : "Incorrect", // Don't show actual guess
         timestamp: Date.now(),
       };
-
-      if (isCorrect) {
-        const basePoints = 1000;
-        const pointsDeduction = Math.floor((snippetDuration - 500) / 500) * 100;
-        const points = Math.max(100, basePoints - pointsDeduction);
-
-        // Update player's score
-        player.score = (player.score || 0) + points;
-        player.hasGuessedCorrectly = true;
-        guessResult.points = points;
-      }
 
       // Ensure all players are in the room
       lobby.players.forEach(player => {
@@ -660,38 +657,38 @@ function initializeSocketServer(server) {
         );
         if (allGuessedCorrectly) {
           console.log("🟢 All players guessed correctly - ending round");
-
-          // Update game state
-          lobby.gameState.isPlaying = false;
-          lobby.gameState.currentRound += 1;
-
-          // Reset hasGuessedCorrectly for next round
-          lobby.players.forEach((p) => (p.hasGuessedCorrectly = false));
-
-          // Save updated state
-          lobbies.set(lobbyId, lobby);
-
-          // Emit round end
-          io.to(lobbyId).emit("roundEnd", {
-            correctSong: lobby.gameState.currentSong,
-            nextRound: lobby.gameState.currentRound,
-          });
-
-          // Emit final game state for the round
-          io.to(lobbyId).emit("gameState", {
-            ...lobby.gameState,
-            players: lobby.players.map((p) => ({
-              id: p.id,
-              userId: p.userId,
-              name: p.name,
-              score: p.score || 0,
-              isHost: p.isHost,
-              hasGuessedCorrectly: false,
-            })),
-            hostId: lobby.hostId,
-          });
+          handleRoundEnd(io, lobby);
         }
       }
+    });
+    // Add handler for duration extension
+    socket.on("extendDuration", ({ lobbyId, newDuration }) => {
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby?.gameState || socket.handshake.auth.userId !== lobby.hostId) return;
+
+      console.log("🟡 Extending snippet duration:", {
+        lobbyId,
+        oldDuration: lobby.gameState.snippetDuration,
+        newDuration,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Update the game state with new duration
+      lobby.gameState.snippetDuration = newDuration;
+      lobbies.set(lobbyId, lobby);
+
+      // Broadcast updated game state to all players
+      io.to(lobbyId).emit("gameState", {
+        ...lobby.gameState,
+        players: lobby.players.map((p) => ({
+          id: p.id,
+          userId: p.userId,
+          name: p.name,
+          score: p.score || 0,
+          isHost: p.isHost,
+          hasGuessedCorrectly: p.hasGuessedCorrectly,
+        })),
+      });
     });
   });
   return io;

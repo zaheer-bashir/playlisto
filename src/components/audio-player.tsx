@@ -10,7 +10,7 @@ interface AudioPlayerProps {
   duration: number;
   onPlaybackComplete: () => void;
   isHost: boolean;
-  onExtendDuration: () => void;
+  onExtendDuration: (additionalTime: number) => void;
   onSkipRound: () => void;
   spotifyToken: string;
   showControls?: boolean;
@@ -40,17 +40,17 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     if (!showControls || !spotifyToken) return;
 
     // Check if script is already loaded
-    if (!window.Spotify && !document.getElementById('spotify-player')) {
-      console.log('🟡 Loading Spotify SDK script...');
+    if (!window.Spotify && !document.getElementById("spotify-player")) {
+      console.log("🟡 Loading Spotify SDK script...");
       const script = document.createElement("script");
-      script.id = 'spotify-player';
+      script.id = "spotify-player";
       script.src = "https://sdk.scdn.co/spotify-player.js";
       script.async = true;
 
       // Add load error handling
       script.onerror = () => {
-        console.error('🔴 Failed to load Spotify SDK script');
-        setError('Failed to load Spotify player');
+        console.error("🔴 Failed to load Spotify SDK script");
+        setError("Failed to load Spotify player");
         setIsLoading(false);
       };
 
@@ -60,8 +60,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     // Set timeout for SDK initialization
     initializationTimeout.current = setTimeout(() => {
       if (!sdkReady.current) {
-        console.error('🔴 Spotify SDK initialization timeout');
-        setError('Failed to initialize Spotify player. Please refresh the page.');
+        console.error("🔴 Spotify SDK initialization timeout");
+        setError(
+          "Failed to initialize Spotify player. Please refresh the page."
+        );
         setIsLoading(false);
       }
     }, 15000); // Increased to 15 seconds
@@ -273,7 +275,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           <Button
             size="icon"
             variant="outline"
-            onClick={onExtendDuration}
+            onClick={() => onExtendDuration(500)}
             disabled={isPlaying}
           >
             <Plus className="h-4 w-4" />
