@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useSocket } from "@/hooks/useSocket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useUserId } from "@/hooks/useUserId";
 import { RoundTimer } from "@/components/round-timer";
+import { GameOverScreen } from "@/components/game-over-screen";
 
 interface Player {
   id: string;
@@ -94,6 +95,7 @@ export default function GamePage() {
   const { socket, isConnected } = useSocket(
     process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001"
   );
+  const router = useRouter();
 
   const [gameState, setGameState] = useState<GameState>({
     currentRound: 1,
@@ -270,7 +272,7 @@ export default function GamePage() {
 
     // Add error handler
     socket.on("error", (error: string) => {
-      console.error("�� Socket error in game:", {
+      console.error("🔴 Socket error in game:", {
         error,
         socketId: socket.id,
         gameId,
@@ -793,10 +795,70 @@ export default function GamePage() {
     };
   }, [socket]);
 
+  // Add new state for game over
+  const [gameOver, setGameOver] = useState<{
+    rankings: Array<{
+      rank: number;
+      name: string;
+      score: number;
+      isHost: boolean;
+      userId: string;
+    }>;
+    totalRounds: number;
+    playlistName?: string;
+  } | null>(null);
+
+  // Add socket listener for game over event
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("gameOver", (gameOverState) => {
+      console.log("🏆 Game Over:", gameOverState);
+      setGameOver(gameOverState);
+    });
+
+    return () => {
+      socket.off("gameOver");
+    };
+  }, [socket]);
+
+  // Add handler for returning to lobby
+  const handleReturnToLobby = () => {
+    if (!socket) return;
+    
+    const playerName = gameState.players.find(p => p.userId === userId)?.name;
+    const isHost = gameState.hostId === userId;
+    
+    socket.emit("returnToLobby", { lobbyId: gameId });
+    
+    // Redirect to lobby with the correct parameters
+    router.push(`/lobby/${gameId}?name=${encodeURIComponent(playerName || '')}&host=${isHost}`);
+  };
+
+  // Add socket listener for returnToLobby event
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("returnToLobby", (data) => {
+      const playerName = data.players.find((p: Player) => p.userId === userId)?.name;
+      const isHost = data.players.find((p: Player) => p.userId === userId)?.isHost;
+      
+      // Clear any game-related state from sessionStorage
+      sessionStorage.removeItem("initialGameState");
+      
+      // Redirect to lobby
+      router.push(`/lobby/${gameId}?name=${encodeURIComponent(playerName || '')}&host=${isHost}`);
+    });
+
+    return () => {
+      socket.off("returnToLobby");
+    };
+  }, [socket, gameId, userId, router]);
+
   return (
-    <main className="min-h-screen bg-[#1E1F2A] bg-[url('/notes-pattern.png')] bg-repeat bg-opacity-5">
-      <div className="max-w-4xl mx-auto p-4 space-y-4">
-        {isLoading ? (
+    <main className="container max-w-7xl mx-auto p-4 md:p-8">
+      <div className="min-h-[80vh]">
+        {!isConnected ? (
           <Card className="shadow-2xl border-none">
             <CardContent className="p-8">
               <div className="flex items-center justify-center gap-2">
@@ -805,6 +867,13 @@ export default function GamePage() {
               </div>
             </CardContent>
           </Card>
+        ) : gameOver ? (
+          <GameOverScreen
+            rankings={gameOver.rankings}
+            totalRounds={gameOver.totalRounds}
+            playlistName={gameOver.playlistName}
+            onReturnToLobby={handleReturnToLobby}
+          />
         ) : (
           <>
             <Card className="shadow-2xl border-none">

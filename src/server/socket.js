@@ -666,7 +666,27 @@ function initializeSocketServer(server) {
         );
         if (allGuessedCorrectly) {
           console.log("🟢 All players guessed correctly - ending round");
-          handleRoundEnd(io, lobby);
+          
+          // Check if this was the final round
+          if (lobby.gameState.currentRound >= lobby.gameState.totalRounds) {
+            // Sort players by score for final rankings
+            const sortedPlayers = [...lobby.players].sort((a, b) => (b.score || 0) - (a.score || 0));
+            const gameOverState = {
+              rankings: sortedPlayers.map((p, index) => ({
+                rank: index + 1,
+                name: p.name,
+                score: p.score || 0,
+                isHost: p.isHost,
+                userId: p.userId
+              })),
+              totalRounds: lobby.gameState.totalRounds,
+              playlistName: lobby.gameState.playlist?.name
+            };
+            
+            io.to(lobbyId).emit("gameOver", gameOverState);
+          } else {
+            handleRoundEnd(io, lobby);
+          }
         }
       }
     });
@@ -697,6 +717,27 @@ function initializeSocketServer(server) {
           isHost: p.isHost,
           hasGuessedCorrectly: p.hasGuessedCorrectly,
         })),
+      });
+    });
+    // Add this with the other socket event handlers
+    socket.on("returnToLobby", ({ lobbyId }) => {
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) return;
+
+      // Reset game state but keep players
+      lobby.gameState = undefined;
+      lobbies.set(lobbyId, lobby);
+
+      // Emit lobby update to all players
+      io.to(lobbyId).emit("returnToLobby", {
+        lobbyId,
+        players: lobby.players.map(p => ({
+          id: p.id,
+          name: p.name,
+          isHost: p.isHost,
+          isReady: p.isHost, // Host is always ready
+          userId: p.userId
+        }))
       });
     });
   });

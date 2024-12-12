@@ -17,6 +17,7 @@ import { useUserId } from "@/hooks/useUserId";
 
 interface Player {
   id: string;
+  userId?: string;
   name: string;
   isReady: boolean;
   isHost: boolean;
@@ -113,6 +114,9 @@ export default function LobbyPage() {
       timestamp: new Date().toISOString(),
     });
 
+    // Clear any existing game state when returning to lobby
+    sessionStorage.removeItem("initialGameState");
+
     // Listen for lobby updates with enhanced logging
     socket.on("lobbyUpdate", (lobby) => {
       console.log("Received lobbyUpdate:", {
@@ -179,6 +183,32 @@ export default function LobbyPage() {
       router.push(`/game/${lobbyId}`);
     });
 
+    // Add reconnection handler for returning players
+    socket.on("lobbyUpdate", (lobby) => {
+      console.log("Received lobbyUpdate in lobby:", {
+        lobbyId: lobby?.id,
+        players: lobby?.players?.map((p: Player) => ({
+          id: p.id,
+          name: p.name,
+          isHost: p.isHost,
+        })),
+        timestamp: new Date().toISOString(),
+      });
+      
+      setPlayers(lobby.players);
+      
+      // Restore playlist selection for host if it exists
+      if (lobby.spotifyPlaylist && isHost) {
+        setSelectedPlaylist(lobby.spotifyPlaylist);
+      }
+      
+      // Reset ready state
+      const currentPlayer = lobby.players.find((p: Player) => p.userId === userId);
+      if (currentPlayer) {
+        setIsReady(currentPlayer.isReady);
+      }
+    });
+
     return () => {
       // Clean up all listeners and leave the lobby
       socket.off("lobbyUpdate");
@@ -186,7 +216,7 @@ export default function LobbyPage() {
       socket.off("error");
       socket.emit("leaveLobby", { lobbyId, userId });
     };
-  }, [socket, lobbyId, router, joinLobby, userId]);
+  }, [socket, lobbyId, router, joinLobby, userId, isHost]);
 
   // Handle Spotify authentication success
   const handleSpotifyAuth = async (token: string) => {
