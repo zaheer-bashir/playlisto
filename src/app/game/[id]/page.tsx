@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useSocket } from "@/hooks/useSocket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { AudioPlayer } from "@/components/audio-player";
 import { SongSearch } from "@/components/song-search";
 import { Loader2 } from "lucide-react";
@@ -13,10 +12,8 @@ import {
   Music2,
   Crown,
   Play,
-  SkipForward,
   MessageSquare,
   Trophy,
-  Music,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -88,6 +85,11 @@ interface GameStartData {
   spotifyToken: string;
 }
 
+interface Track {
+  id: string;
+  name: string;
+}
+
 export default function GamePage() {
   const params = useParams();
   const gameId = params.id as string;
@@ -104,17 +106,17 @@ export default function GamePage() {
     isPlaying: false,
     snippetDuration: 500
   });
-  const [guess, setGuess] = useState("");
   const [remainingGuesses, setRemainingGuesses] = useState(3);
   const [guessResults, setGuessResults] = useState<GuessResult[]>([]);
   const [gameStatus, setGameStatus] = useState<string>(
     "Waiting for host to start the round..."
   );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [spotifyToken, setSpotifyToken] = useState<string | null>(null);
-  const [currentPlaylist, setCurrentPlaylist] = useState<any>(null);
+  const [currentPlaylist, setCurrentPlaylist] = useState<Playlist | null>(null);
   const [availableSongs, setAvailableSongs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Add a mount counter ref to track mounts
   const mountCount = useRef(0);
