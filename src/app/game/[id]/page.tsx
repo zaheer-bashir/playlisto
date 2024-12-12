@@ -21,6 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useUserId } from "@/hooks/useUserId";
+import { RoundTimer } from "@/components/round-timer";
 
 interface Player {
   id: string;
@@ -55,6 +56,7 @@ interface GuessResult {
   correct: boolean;
   points?: number;
   guess: string;
+  timeElapsed?: number;
 }
 
 // Define a type for the playlist item
@@ -268,7 +270,7 @@ export default function GamePage() {
 
     // Add error handler
     socket.on("error", (error: string) => {
-      console.error("🔴 Socket error in game:", {
+      console.error("�� Socket error in game:", {
         error,
         socketId: socket.id,
         gameId,
@@ -881,15 +883,19 @@ export default function GamePage() {
                         <div className="space-y-2">
                           <div className="flex justify-between items-center">
                             <h3 className="font-semibold">Make Your Guess</h3>
-                            <Badge
-                              variant={
-                                remainingGuesses > 1
-                                  ? "secondary"
-                                  : "destructive"
-                              }
-                            >
-                              {remainingGuesses} guesses remaining
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              {gameState.currentSong && (
+                                <RoundTimer 
+                                  startTime={gameState.currentSong.startTime} 
+                                  isPlaying={gameState.isPlaying} 
+                                />
+                              )}
+                              <Badge
+                                variant={remainingGuesses > 1 ? "secondary" : "destructive"}
+                              >
+                                {remainingGuesses} guesses remaining
+                              </Badge>
+                            </div>
                           </div>
 
                           {/* Guess Result Feedback */}
@@ -943,11 +949,22 @@ export default function GamePage() {
                                 : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-100"
                             )}
                           >
-                            <span className="font-medium">
-                              {result.playerName || "Player"}:
-                            </span>{" "}
-                            "{result.guess}"{" "}
-                            {result.correct && `(+${result.points} points)`}
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <span className="font-medium">
+                                  {result.playerName || "Player"}:
+                                </span>{" "}
+                                "{result.guess}"
+                              </div>
+                              <div className="text-sm">
+                                {result.correct && (
+                                  <>
+                                    {result.timeElapsed && `${(result.timeElapsed / 1000).toFixed(1)}s `}
+                                    {`(+${result.points} points)`}
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>

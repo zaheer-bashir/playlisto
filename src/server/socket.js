@@ -582,22 +582,30 @@ function initializeSocketServer(server) {
 
       const isCorrect = normalizeString(songName) === normalizeString(lobby.gameState.currentSong.name);
       
-      // Calculate points based on the current game state duration
+      // Calculate points based on both duration and time elapsed
       let points = 0;
       if (isCorrect) {
         const currentDuration = lobby.gameState.snippetDuration || 500;
-        // Base points calculation using game state duration
+        const timeElapsed = Date.now() - lobby.gameState.currentSong.startTime;
+        
+        // Base points calculation
         const basePoints = 1000;
-        const durationPenalty = Math.floor((currentDuration - 500) / 500) * 100;
-        points = Math.max(100, basePoints - durationPenalty);
+        // Deduct 25 points for each 500ms increase in snippet duration
+        const durationPenalty = Math.floor((currentDuration - 500) / 500) * 25;
+        // Deduct 5 points for every 2 seconds elapsed
+        const timePenalty = Math.floor(timeElapsed / 2000) * 5;
+        
+        points = Math.max(100, basePoints - durationPenalty - timePenalty);
         
         player.hasGuessedCorrectly = true;
         player.score = (player.score || 0) + points;
 
-        console.log("🟢 Correct guess points calculation:", {
+        console.log("🟢 Score calculation:", {
           basePoints,
           currentDuration,
+          timeElapsed: timeElapsed / 1000, // Log in seconds for readability
           durationPenalty,
+          timePenalty,
           finalPoints: points,
           timestamp: new Date().toISOString(),
         });
@@ -608,7 +616,8 @@ function initializeSocketServer(server) {
         playerName: player.name,
         correct: isCorrect,
         points: points,
-        guess: isCorrect ? "Correct!" : "Incorrect", // Don't show actual guess
+        guess: isCorrect ? "Correct!" : "Incorrect",
+        timeElapsed: isCorrect ? Date.now() - lobby.gameState.currentSong.startTime : undefined,
         timestamp: Date.now(),
       };
 
