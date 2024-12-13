@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 "use client";
 
 import { useEffect, useState, useRef } from "react";
@@ -8,13 +10,7 @@ import { Button } from "@/components/ui/button";
 import { AudioPlayer } from "@/components/audio-player";
 import { SongSearch } from "@/components/song-search";
 import { Loader2 } from "lucide-react";
-import {
-  Music2,
-  Crown,
-  Play,
-  MessageSquare,
-  Trophy,
-} from "lucide-react";
+import { Music2, Crown, Play, MessageSquare, Trophy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useUserId } from "@/hooks/useUserId";
@@ -104,7 +100,7 @@ export default function GamePage() {
     totalRounds: 10,
     players: [],
     isPlaying: false,
-    snippetDuration: 500
+    snippetDuration: 500,
   });
   const [remainingGuesses, setRemainingGuesses] = useState(3);
   const [guessResults, setGuessResults] = useState<GuessResult[]>([]);
@@ -352,7 +348,7 @@ export default function GamePage() {
     }
 
     // Check if player has already guessed correctly
-    const currentPlayer = gameState.players.find(p => p.userId === userId);
+    const currentPlayer = gameState.players.find((p) => p.userId === userId);
     if (currentPlayer?.hasGuessedCorrectly) {
       console.log("🔴 Player has already guessed correctly");
       return;
@@ -396,9 +392,9 @@ export default function GamePage() {
       timestamp: new Date().toISOString(),
     });
 
-    socket.emit("extendDuration", { 
-      lobbyId: gameId, 
-      newDuration 
+    socket.emit("extendDuration", {
+      lobbyId: gameId,
+      newDuration,
     });
   };
 
@@ -666,7 +662,10 @@ export default function GamePage() {
         isCurrentPlayer: result.playerId === userId,
         socketId: socket.id,
         hasGameState: !!gameState,
-        currentPlayers: gameState?.players?.map(p => ({ id: p.id, name: p.name })),
+        currentPlayers: gameState?.players?.map((p) => ({
+          id: p.id,
+          name: p.name,
+        })),
         timestamp: new Date().toISOString(),
       });
 
@@ -688,13 +687,17 @@ export default function GamePage() {
           currentGameState: gameState,
           timestamp: new Date().toISOString(),
         });
-        
+
         setGameState((prev) => {
           const updatedState = {
             ...prev,
             players: prev.players.map((p) =>
               p.id === result.playerId
-                ? { ...p, score: (p.score || 0) + (result.points || 0), hasGuessedCorrectly: true }
+                ? {
+                    ...p,
+                    score: (p.score || 0) + (result.points || 0),
+                    hasGuessedCorrectly: true,
+                  }
                 : p
             ),
           };
@@ -827,14 +830,18 @@ export default function GamePage() {
   // Add handler for returning to lobby
   const handleReturnToLobby = () => {
     if (!socket) return;
-    
-    const playerName = gameState.players.find(p => p.userId === userId)?.name;
+
+    const playerName = gameState.players.find((p) => p.userId === userId)?.name;
     const isHost = gameState.hostId === userId;
-    
+
     socket.emit("returnToLobby", { lobbyId: gameId });
-    
+
     // Redirect to lobby with the correct parameters
-    router.push(`/lobby/${gameId}?name=${encodeURIComponent(playerName || '')}&host=${isHost}`);
+    router.push(
+      `/lobby/${gameId}?name=${encodeURIComponent(
+        playerName || ""
+      )}&host=${isHost}`
+    );
   };
 
   // Add socket listener for returnToLobby event
@@ -842,14 +849,22 @@ export default function GamePage() {
     if (!socket) return;
 
     socket.on("returnToLobby", (data) => {
-      const playerName = data.players.find((p: Player) => p.userId === userId)?.name;
-      const isHost = data.players.find((p: Player) => p.userId === userId)?.isHost;
-      
+      const playerName = data.players.find(
+        (p: Player) => p.userId === userId
+      )?.name;
+      const isHost = data.players.find(
+        (p: Player) => p.userId === userId
+      )?.isHost;
+
       // Clear any game-related state from sessionStorage
       sessionStorage.removeItem("initialGameState");
-      
+
       // Redirect to lobby
-      router.push(`/lobby/${gameId}?name=${encodeURIComponent(playerName || '')}&host=${isHost}`);
+      router.push(
+        `/lobby/${gameId}?name=${encodeURIComponent(
+          playerName || ""
+        )}&host=${isHost}`
+      );
     });
 
     return () => {
@@ -956,13 +971,17 @@ export default function GamePage() {
                             <h3 className="font-semibold">Make Your Guess</h3>
                             <div className="flex items-center gap-2">
                               {gameState.currentSong && (
-                                <RoundTimer 
-                                  startTime={gameState.currentSong.startTime} 
-                                  isPlaying={gameState.isPlaying} 
+                                <RoundTimer
+                                  startTime={gameState.currentSong.startTime}
+                                  isPlaying={gameState.isPlaying}
                                 />
                               )}
                               <Badge
-                                variant={remainingGuesses > 1 ? "secondary" : "destructive"}
+                                variant={
+                                  remainingGuesses > 1
+                                    ? "secondary"
+                                    : "destructive"
+                                }
                               >
                                 {remainingGuesses} guesses remaining
                               </Badge>
@@ -994,7 +1013,10 @@ export default function GamePage() {
                             spotifyToken={spotifyToken || ""}
                             onGuess={handleGuess}
                             disabled={remainingGuesses <= 0}
-                            hasGuessedCorrectly={gameState.players.find(p => p.userId === userId)?.hasGuessedCorrectly}
+                            hasGuessedCorrectly={
+                              gameState.players.find((p) => p.userId === userId)
+                                ?.hasGuessedCorrectly
+                            }
                           />
                         </div>
                       </div>
@@ -1030,7 +1052,10 @@ export default function GamePage() {
                               <div className="text-sm">
                                 {result.correct && (
                                   <>
-                                    {result.timeElapsed && `${(result.timeElapsed / 1000).toFixed(1)}s `}
+                                    {result.timeElapsed &&
+                                      `${(result.timeElapsed / 1000).toFixed(
+                                        1
+                                      )}s `}
                                     {`(+${result.points} points)`}
                                   </>
                                 )}
