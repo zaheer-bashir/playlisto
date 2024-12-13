@@ -10,6 +10,7 @@ interface ThemeProviderProps {
   enableSystem?: boolean;
   storageKey?: string;
   value?: { [x: string]: string };
+  disableTransitionOnChange?: boolean;
 }
 
 export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
