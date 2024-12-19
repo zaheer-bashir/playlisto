@@ -163,7 +163,7 @@ export default function GamePage() {
         timestamp: new Date().toISOString(),
       });
     };
-  }, []); // Empty dependency array means this only runs on mount/unmount
+  }, [gameId, spotifyToken, userId]); // Include dependencies to avoid missing dependencies warning
 
   // Add effect to handle initial state
   useEffect(() => {
@@ -469,7 +469,7 @@ export default function GamePage() {
         timestamp: new Date().toISOString(),
       });
     };
-  }, [socket, gameId]);
+  }, [socket, gameId, gameState]);
 
   // Debug log for host status changes
   useEffect(() => {
