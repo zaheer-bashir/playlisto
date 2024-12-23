@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Input } from './ui/input';
-import { Button } from './ui/button';
-import { Search, Loader2, Music } from 'lucide-react';
-import { useDebounce } from '@/hooks/useDebounce';
+import { useState, useEffect } from "react";
+import { Input } from "./ui/input";
+import { Search, Loader2, Music } from "lucide-react";
+import { useDebounce } from "@/hooks/useDebounce";
+import { createSpotifyService } from "@/services/spotify";
 
 interface Song {
   id: string;
@@ -20,16 +20,19 @@ interface SongSearchProps {
   hasGuessedCorrectly?: boolean;
 }
 
-export function SongSearch({ spotifyToken, onGuess, disabled, hasGuessedCorrectly }: SongSearchProps) {
-  const [searchTerm, setSearchTerm] = useState('');
+export function SongSearch({
+  spotifyToken,
+  onGuess,
+  disabled,
+  hasGuessedCorrectly,
+}: SongSearchProps) {
+  const [searchTerm, setSearchTerm] = useState("");
   const [results, setResults] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
-  
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
-  // Search songs when debounced search term changes
   useEffect(() => {
     if (!debouncedSearchTerm.trim() || !spotifyToken) {
       setResults([]);
@@ -41,39 +44,23 @@ export function SongSearch({ spotifyToken, onGuess, disabled, hasGuessedCorrectl
       setError(null);
 
       try {
-        const response = await fetch(
-          `https://api.spotify.com/v1/search?q=${encodeURIComponent(
-            debouncedSearchTerm
-          )}&type=track&limit=5`,
-          {
-            headers: {
-              Authorization: `Bearer ${spotifyToken}`,
-              'Content-Type': 'application/json',
-            },
-          }
+        const spotifyService = createSpotifyService(spotifyToken);
+        const data = await spotifyService.searchTracks(debouncedSearchTerm);
+
+        const formattedResults: Song[] = data.tracks.items.map(
+          (track: any) => ({
+            id: track.id,
+            name: track.name,
+            artists: track.artists.map((artist: any) => artist.name),
+            album: track.album.name,
+          })
         );
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            throw new Error('Spotify token has expired');
-          }
-          throw new Error('Failed to search songs');
-        }
-
-        const data = await response.json();
-        
-        const formattedResults: Song[] = data.tracks.items.map((track: any) => ({
-          id: track.id,
-          name: track.name,
-          artists: track.artists.map((artist: any) => artist.name),
-          album: track.album.name,
-        }));
 
         setResults(formattedResults);
         setShowResults(true);
       } catch (error) {
-        console.error('Search error:', error);
-        setError(error instanceof Error ? error.message : 'An error occurred');
+        console.error("Search error:", error);
+        setError(error instanceof Error ? error.message : "An error occurred");
       } finally {
         setIsLoading(false);
       }
@@ -83,22 +70,16 @@ export function SongSearch({ spotifyToken, onGuess, disabled, hasGuessedCorrectl
   }, [debouncedSearchTerm, spotifyToken]);
 
   const handleSubmitGuess = (songName: string) => {
-    console.log('🟡 Submitting guess:', {
-      songName,
-      timestamp: new Date().toISOString()
-    });
-
     onGuess(songName);
-    setSearchTerm('');
+    setSearchTerm("");
     setResults([]);
     setShowResults(false);
   };
 
-  // Close results when clicking outside
   useEffect(() => {
     const handleClickOutside = () => setShowResults(false);
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
   return (
@@ -132,15 +113,12 @@ export function SongSearch({ spotifyToken, onGuess, disabled, hasGuessedCorrectl
             <div className="p-2 text-sm text-destructive">{error}</div>
           ) : results.length === 0 ? (
             <div className="p-2 text-sm text-muted-foreground">
-              {isLoading ? 'Searching...' : 'No songs found'}
+              {isLoading ? "Searching..." : "No songs found"}
             </div>
           ) : (
             <ul className="max-h-[300px] overflow-auto">
               {results.map((song) => (
-                <li
-                  key={song.id}
-                  className="border-b last:border-0"
-                >
+                <li key={song.id} className="border-b last:border-0">
                   <button
                     onClick={() => handleSubmitGuess(song.name)}
                     className="w-full px-4 py-2 text-left hover:bg-muted flex items-start gap-3 transition-colors"
@@ -150,7 +128,7 @@ export function SongSearch({ spotifyToken, onGuess, disabled, hasGuessedCorrectl
                     <div className="min-w-0 flex-1">
                       <div className="font-medium truncate">{song.name}</div>
                       <div className="text-sm text-muted-foreground truncate">
-                        {song.artists.join(', ')}
+                        {song.artists.join(", ")}
                       </div>
                     </div>
                   </button>
@@ -162,4 +140,4 @@ export function SongSearch({ spotifyToken, onGuess, disabled, hasGuessedCorrectl
       )}
     </div>
   );
-} 
+}
