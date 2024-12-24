@@ -18,7 +18,7 @@ const PlaylistSelector: React.FC<PlaylistSelectorProps> = ({
   handlePlaylistSelect,
 }) => {
   return (
-    <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+    <DialogContent className="!max-w-3xl overflow-hidden overflow-y-auto" style={{ height: '80vh' }}>
       <DialogHeader>
         <DialogTitle>Select a Playlist</DialogTitle>
       </DialogHeader>
