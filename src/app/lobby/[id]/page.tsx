@@ -11,7 +11,7 @@ import {
   PlayersList,
   PlaylistSelector,
 } from "@/ui/lobby";
-import useLobby from "./actions";
+import useLobby from "./useLobby";
 
 export default function LobbyPage() {
   const {
