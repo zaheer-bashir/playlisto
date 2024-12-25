@@ -6,7 +6,7 @@ interface HomeCardProps {
 }
 const HomeCard = ({ children }: HomeCardProps) => {
   return (
-    <Card className="w-full max-w-md">
+    <Card className="max-w-md">
       <CardHeader className="space-y-2">
         <div className="flex justify-center">
           <Music2 className="h-12 w-12 text-primary" />

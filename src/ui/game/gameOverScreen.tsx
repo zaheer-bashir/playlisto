@@ -1,7 +1,8 @@
 import { useRouter } from "next/navigation";
+import { Trophy, Crown, Medal, Home, RotateCcw } from "lucide-react";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trophy, Crown, Medal, Home, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface GameOverProps {
@@ -12,15 +13,18 @@ interface GameOverProps {
     isHost: boolean;
     userId: string;
   }[];
-  totalRounds: number;
   playlistName?: string;
   onReturnToLobby: () => void;
 }
 
-export function GameOverScreen({ rankings, totalRounds, playlistName, onReturnToLobby }: GameOverProps) {
+const GameOverScreen = ({
+  rankings,
+  playlistName,
+  onReturnToLobby,
+}: GameOverProps) => {
   const router = useRouter();
   const topThree = rankings.slice(0, 3);
-  
+
   const getRankIcon = (rank: number) => {
     switch (rank) {
       case 1:
@@ -43,14 +47,13 @@ export function GameOverScreen({ rankings, totalRounds, playlistName, onReturnTo
         )}
       </CardHeader>
       <CardContent className="p-6 space-y-8">
-        {/* Top 3 Podium */}
         <div className="flex justify-center items-end gap-4 h-64 mb-8">
           {topThree.map((player, index) => (
             <div
               key={player.userId}
               className="flex flex-col items-center"
               style={{
-                height: `${index === 0 ? '100%' : index === 1 ? '85%' : '70%'}`
+                height: `${index === 0 ? "100%" : index === 1 ? "85%" : "70%"}`,
               }}
             >
               <div
@@ -71,7 +74,6 @@ export function GameOverScreen({ rankings, totalRounds, playlistName, onReturnTo
           ))}
         </div>
 
-        {/* Other Players */}
         {rankings.slice(3).length > 0 && (
           <div className="space-y-2">
             <h3 className="font-semibold text-lg mb-4">Other Players</h3>
@@ -90,20 +92,15 @@ export function GameOverScreen({ rankings, totalRounds, playlistName, onReturnTo
           </div>
         )}
 
-        {/* Action Buttons */}
         <div className="flex justify-center gap-4 pt-4">
-          <Button
-            variant="outline"
-            className="w-48"
-            onClick={onReturnToLobby}
-          >
+          <Button variant="outline" className="w-48" onClick={onReturnToLobby}>
             <RotateCcw className="mr-2 h-4 w-4" />
             Return to Lobby
           </Button>
           <Button
             variant="default"
             className="w-48"
-            onClick={() => router.push('/')}
+            onClick={() => router.push("/")}
           >
             <Home className="mr-2 h-4 w-4" />
             Exit to Home
@@ -112,4 +109,6 @@ export function GameOverScreen({ rankings, totalRounds, playlistName, onReturnTo
       </CardContent>
     </Card>
   );
-} 
+};
+
+export default GameOverScreen;
